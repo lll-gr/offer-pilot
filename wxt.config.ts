@@ -9,7 +9,7 @@ export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
   vite: () => ({
-    plugins: [svgr()],
+    plugins: [svgr({ include: '**/*.svg' })],
   }),
   manifest: {
     name: 'Offer Pilot · AI 简历填表助手',
