@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import svgLoader from 'vite-svg-loader'
+import svgr from 'vite-plugin-svgr'
 import { defineConfig } from 'wxt'
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'))
@@ -9,7 +9,7 @@ export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
   vite: () => ({
-    plugins: [svgLoader({ defaultImport: 'component' })],
+    plugins: [svgr()],
   }),
   manifest: {
     name: 'Offer Pilot · AI 简历填表助手',
