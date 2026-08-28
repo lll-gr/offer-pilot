@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>分步填入联调表单</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f5f5;
+        color: #111827;
+      }
+      .page {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 6px;
+      }
+      .step-indicator {
+        color: #6b7280;
+        margin: 0 0 24px;
+        font-size: 14px;
+      }
+      .seg-form {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 24px;
+        margin-bottom: 20px;
+      }
+      .field {
+        margin-bottom: 16px;
+      }
+      .field label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .field input,
+      .field select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 9px 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+      }
+      button {
+        padding: 10px 22px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #18181b;
+        color: #fff;
+        border-color: #18181b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>分步填入联调（两步表单）</h1>
+      <p class="step-indicator" id="stepIndicator">第 1 步 / 共 2 步</p>
+
+      <!-- 块 1：基本信息 -->
+      <form class="seg-form" id="step1">
+        <div class="field">
+          <label for="name">姓名</label>
+          <input id="name" name="name" type="text" placeholder="请输入姓名" />
+        </div>
+        <div class="field">
+          <label for="phone">手机号码</label>
+          <input id="phone" name="phone" type="tel" placeholder="请输入手机号" />
+        </div>
+        <div class="field">
+          <label for="email">邮箱</label>
+          <input id="email" name="email" type="text" placeholder="请输入邮箱" />
+        </div>
+        <div class="actions">
+          <button type="button">取消</button>
+          <button type="button" class="primary" onclick="goStep2()">下一步</button>
+        </div>
+      </form>
+
+      <!-- 块 2：教育经历（初始隐藏，模拟 SPA 翻页） -->
+      <form class="seg-form" id="step2" style="display: none">
+        <div class="field">
+          <label for="school">学校名称</label>
+          <input id="school" name="school" type="text" placeholder="请输入学校" />
+        </div>
+        <div class="field">
+          <label for="major">专业</label>
+          <input id="major" name="major" type="text" placeholder="请输入专业" />
+        </div>
+        <div class="field">
+          <label for="degree">学历</label>
+          <select id="degree" name="degree">
+            <option value="">请选择</option>
+            <option>本科</option>
+            <option>硕士</option>
+            <option>博士</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button type="button" onclick="goStep1()">上一步</button>
+          <button type="button" class="primary">保存并下一步</button>
+        </div>
+      </form>
+    </div>
+
+    <script>
+      function goStep2() {
+        document.getElementById('step1').style.display = 'none'
+        document.getElementById('step2').style.display = ''
+        document.getElementById('stepIndicator').textContent = '第 2 步 / 共 2 步'
+      }
+      function goStep1() {
+        document.getElementById('step2').style.display = 'none'
+        document.getElementById('step1').style.display = ''
+        document.getElementById('stepIndicator').textContent = '第 1 步 / 共 2 步'
+      }
+    </script>
+  </body>
+</html>

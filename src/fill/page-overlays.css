@@ -1,0 +1,43 @@
+/* 页面覆盖物样式：选区框选层 + 填充字段高亮 */
+
+.offer-pilot-selection-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  cursor: crosshair;
+  background: rgba(9, 9, 11, 0.08);
+  backdrop-filter: blur(1px);
+}
+
+.offer-pilot-selection-box {
+  position: fixed;
+  border: 2px solid rgba(24, 24, 27, 0.92);
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+.offer-pilot-selection-hint {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.92);
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  pointer-events: none;
+}
+
+/* 填充字段高亮（成功填充的元素短暂标记） */
+
+.offer-pilot-filled {
+  outline: 2px solid rgba(16, 185, 129, 0.85) !important;
+  outline-offset: 1px;
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  transition: outline-color 0.4s ease, background-color 0.4s ease;
+}

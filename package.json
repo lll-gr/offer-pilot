@@ -1,0 +1,36 @@
+{
+  "name": "offer-pilot",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "AI 简历填表助手：粘贴简历文本，AI 解析并自动填写网页表单（不自动提交）",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "icons": "node scripts/generate-icons.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.2.108",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/chrome": "^0.2.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@wxt-dev/module-react": "^1.2.2",
+    "typescript": "^5.9.2",
+    "vite-svg-loader": "^5.1.2",
+    "vitest": "^4.1.10",
+    "wxt": "^0.20.27"
+  }
+}

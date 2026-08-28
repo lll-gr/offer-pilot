@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a9bff" />
+      <stop offset="1" stop-color="#3a7bd5" />
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角蓝色渐变底（上浅下深） -->
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)" />
+
+  <!--
+    纸飞机：单一纯白剪影，机头朝右上。
+    轮廓点：机头 N(100,26) → 左翼尖 L(38,62) → 折痕谷点 V(68,72)
+            → 尾鳍尖 F(76,94) → 右翼后点 R(84,66) → 闭合
+    V 点的内凹把大机翼与下垂尾鳍分开，单 path 扁平无分层。
+  -->
+  <path
+    fill="#ffffff"
+    d="M 100 26 L 38 62 L 68 72 L 76 94 L 84 66 Z"
+  />
+
+  <!-- 四角星：机尾下方偏左 -->
+  <path
+    fill="#ffffff"
+    d="M 30 84 L 32.6 89.4 L 38 92 L 32.6 94.6 L 30 100 L 27.4 94.6 L 22 92 L 27.4 89.4 Z"
+  />
+</svg>

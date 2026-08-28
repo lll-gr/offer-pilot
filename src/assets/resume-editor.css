@@ -1,0 +1,395 @@
+/* ============================================================
+   Offer Pilot · 全页简历编辑器布局
+   依赖 popup.css 的 op-* 设计 token；本文件只做编辑器特有布局。
+   ============================================================ */
+
+/* ─── 页面壳 ─────────────────────────────────────────────── */
+
+body.resume-editor-page {
+  background: var(--op-bg);
+  min-height: 100vh;
+}
+
+.op-editor-shell {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 32px 28px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ─── 头部 ───────────────────────────────────────────────── */
+
+.op-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 24px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-lg);
+  background: var(--op-bg-card);
+  box-shadow: var(--op-shadow-md);
+}
+
+.op-editor-header-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.op-editor-header .op-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  box-shadow: var(--op-shadow-sm);
+}
+
+.op-editor-header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.op-editor-header-copy h1 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--op-text);
+}
+
+.op-editor-header-copy p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--op-text-3);
+}
+
+.op-editor-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.op-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ─── 双栏布局：导航 + 表单 ──────────────────────────────── */
+
+.op-editor-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.op-editor-nav {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-lg);
+}
+
+.op-editor-nav-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--op-radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.op-editor-nav-btn:hover {
+  background: var(--op-bg-hover);
+}
+
+.op-editor-nav-btn.has-value .op-editor-nav-label {
+  color: var(--op-text);
+}
+
+.op-editor-nav-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--op-text-2);
+}
+
+.op-editor-nav-meta {
+  font-size: 11px;
+  color: var(--op-text-3);
+}
+
+.op-editor-form-host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ─── 简历区块 ───────────────────────────────────────────── */
+
+.op-rgroup {
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-lg);
+  overflow: hidden;
+}
+
+.op-rgroup-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--op-border);
+}
+
+.op-rgroup-head-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.op-rgroup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+}
+
+.op-rgroup-toggle-icon {
+  display: inline-flex;
+  width: 16px;
+  color: var(--op-text-3);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.op-rgroup:not(.is-collapsed) .op-rgroup-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.op-rgroup-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.op-rgroup-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--op-text);
+}
+
+.op-rgroup-summary {
+  font-size: 12px;
+  color: var(--op-text-3);
+}
+
+.op-rgroup-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--op-text-2);
+  background: var(--op-bg-inset);
+  border-radius: var(--op-radius-sm);
+  padding: 6px 10px;
+}
+
+.op-rgroup-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.op-rgroup-body {
+  padding: 16px;
+}
+
+.op-rgroup.is-collapsed .op-rgroup-body {
+  display: none;
+}
+
+/* ─── 字段网格 ───────────────────────────────────────────── */
+
+.op-rgroup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.op-rgroup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.op-rgroup-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--op-text-2);
+}
+
+.op-ctrl-input,
+.op-ctrl-select,
+.op-ctrl-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  font-size: 13px;
+  background: var(--op-bg-card);
+  color: var(--op-text);
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.op-ctrl-textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.op-ctrl-input:focus,
+.op-ctrl-select:focus,
+.op-ctrl-textarea:focus {
+  outline: none;
+  border-color: var(--op-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--op-accent) 18%, transparent);
+}
+
+/* ─── 列表条目（教育/实习等） ────────────────────────────── */
+
+.op-rgroup-item {
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  padding: 14px;
+  background: var(--op-bg-inset);
+}
+
+.op-rgroup-item + .op-rgroup-item {
+  margin-top: 14px;
+}
+
+.op-rgroup-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.op-rgroup-item-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.op-rgroup-item-subtitle {
+  font-size: 11px;
+  color: var(--op-text-3);
+  margin-top: 2px;
+}
+
+.op-rgroup-item-remove {
+  background: none;
+  border: none;
+  color: var(--op-danger);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--op-radius-sm);
+  transition: background 0.15s ease;
+}
+
+.op-rgroup-item-remove:hover {
+  background: var(--op-danger-soft);
+}
+
+/* ─── 导入区 ─────────────────────────────────────────────── */
+
+.op-editor-import {
+  background: var(--op-bg-card);
+  border: 1px dashed var(--op-border-strong);
+  border-radius: var(--op-radius-lg);
+  padding: 20px;
+}
+
+.op-editor-import-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.op-editor-import-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--op-radius-md);
+  background: var(--op-accent-grad);
+  color: #ffffff;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.op-editor-import-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.op-editor-import-desc {
+  font-size: 12px;
+  color: var(--op-text-3);
+  margin-top: 2px;
+}
+
+.op-editor-import-body .op-field {
+  margin-bottom: 12px;
+}
+
+.op-editor-import-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ─── 响应式 ─────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .op-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .op-editor-nav {
+    position: static;
+    max-height: none;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .op-editor-nav-btn {
+    min-width: 140px;
+  }
+
+  .op-rgroup-grid {
+    grid-template-columns: 1fr;
+  }
+}
