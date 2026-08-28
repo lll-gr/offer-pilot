@@ -37,9 +37,7 @@ jobs:
 
       - name: Build & zip extension
         run: npm run zip
-
-      - name: Rename artifact
-        run: cp .output/chrome-mv3.zip offer-pilot-${{ github.ref_name }}-chrome.zip
+        # wxt zip 产出即最终命名：.output/offer-pilot-{version}-chrome.zip
 
       - name: Generate changelog (中文)
         shell: bash
@@ -69,5 +67,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: offer-pilot-*.zip
+          files: .output/offer-pilot-*.zip
           body_path: CHANGELOG.md
