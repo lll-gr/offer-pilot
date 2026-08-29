@@ -5,6 +5,9 @@
 import { useCallback, useState } from 'react'
 
 import GearIcon from '@/assets/icons/gear.svg'
+import GithubIcon from '@/assets/icons/github.svg'
+import ListIcon from '@/assets/icons/list.svg'
+import { Modal } from '@/components/Modal'
 import { CacheManager } from '@/features/fill-flow/CacheManager'
 import { FillPanel } from '@/features/fill-flow/FillPanel'
 import { FillProgressPanel } from '@/features/fill-flow/FillProgressPanel'
@@ -34,6 +37,7 @@ export function SidepanelApp() {
     text: '等待开始',
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [logsOpen, setLogsOpen] = useState(false)
 
   const resumeApi = useResumeSlots()
   const modelsApi = useModels()
@@ -74,6 +78,10 @@ export function SidepanelApp() {
 
   const hasResumeData = hasAnyFilledField(resumeApi.profile)
 
+  // 模型未就绪（无模型或激活模型缺 key）：填充页顶部引导条
+  const activeModel = modelsApi.models.find((model) => model.id === modelsApi.activeModelId)
+  const hasModelKey = Boolean(activeModel?.apiKey)
+
   return (
     <div className="op-shell">
       <header className="op-header">
@@ -86,6 +94,23 @@ export function SidepanelApp() {
           </div>
         </div>
         <div className="op-header-actions">
+          <button
+            className="op-icon-btn"
+            title={`运行日志（${fillEvents.logs.length} 条）`}
+            onClick={() => setLogsOpen(true)}
+          >
+            <ListIcon width={19} height={19} />
+            {fillEvents.logs.length > 0 ? (
+              <span className="op-icon-badge">{fillEvents.logs.length > 99 ? '99+' : fillEvents.logs.length}</span>
+            ) : null}
+          </button>
+          <button
+            className="op-icon-btn"
+            title="GitHub 仓库"
+            onClick={() => void chrome.tabs.create({ url: 'https://github.com/lll-gr/offer-pilot' })}
+          >
+            <GithubIcon width={18} height={18} />
+          </button>
           <button
             className="op-icon-btn"
             title="模型设置"
@@ -118,6 +143,12 @@ export function SidepanelApp() {
 
         {activeTab === 'fill' ? (
           <>
+            {!hasModelKey ? (
+              <button className="op-empty-resume" onClick={() => setSettingsOpen(true)}>
+                <span className="op-empty-resume-title">模型未配置，填充前请先填 API Key</span>
+                <span className="op-empty-resume-action">去配置 →</span>
+              </button>
+            ) : null}
             <FillPanel
               stats={stats}
               hasResumeData={hasResumeData}
@@ -127,6 +158,7 @@ export function SidepanelApp() {
               onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
               onClearCache={() => void fillFlow.clearMappingCache()}
               onCancel={() => void fillFlow.cancelFill()}
+              onRequireResume={() => setActiveTab('resume')}
             />
             {fillFlow.isFilling ? (
               <FillProgressPanel progress={fillEvents.progress} />
@@ -150,8 +182,13 @@ export function SidepanelApp() {
                 company={resumeApi.activeSlot?.company || ''}
                 position={resumeApi.activeSlot?.position || ''}
                 onSwitch={(slotId) => void resumeApi.switchSlot(slotId)}
-                onCreate={() => void resumeApi.createNewSlot({ name: '新档位' })}
-                onDuplicate={() => void resumeApi.createNewSlot({ name: '复制档位', copyFromId: resumeApi.activeSlotId })}
+                onCreate={(options) => void resumeApi.createNewSlot({ name: options.name || '新档位' })}
+                onDuplicate={(options) =>
+                  void resumeApi.createNewSlot({
+                    name: options.name || '复制档位',
+                    copyFromId: options.copyFromId || resumeApi.activeSlotId,
+                  })
+                }
                 onDelete={() => void resumeApi.deleteSlot(resumeApi.activeSlotId)}
                 onMetaChange={(meta) => void resumeApi.updateMeta(meta)}
               />
@@ -173,15 +210,18 @@ export function SidepanelApp() {
             </div>
           </section>
         )}
+      </main>
 
+      <Modal title={`运行日志（${fillEvents.logs.length}）`} open={logsOpen} onClose={() => setLogsOpen(false)}>
         <LogViewer
           logs={fillEvents.logs}
           onClear={fillEvents.clearLogs}
           exportState={logExport.state}
           selecting={logExport.selecting}
           onSelectDirectory={() => void logExport.selectDirectory()}
+          embedded
         />
-      </main>
+      </Modal>
 
       <SettingsModal
         open={settingsOpen}

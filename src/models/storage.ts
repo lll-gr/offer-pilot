@@ -1,5 +1,5 @@
 /**
- * AI 模型配置的本地持久化：内置 DeepSeek + 任意自定义模型，
+ * AI 模型配置的本地持久化：模型列表由用户自建（无内置项），
  * 支持激活切换。storageOverride 用于测试注入。
  */
 
@@ -9,27 +9,17 @@ export interface ModelConfig {
   baseUrl: string
   apiKey: string
   model: string
-  builtin: boolean
 }
 
 export const MODEL_STORAGE_KEYS = {
   models: 'aiModels',
-  builtinOverride: 'builtinModelOverride',
   activeModelId: 'activeModelId',
 } as const
-
-export const DEFAULT_MODEL: Readonly<ModelConfig> = Object.freeze({
-  id: 'builtin-deepseek',
-  name: 'DeepSeek',
-  baseUrl: 'https://api.deepseek.com/v1',
-  apiKey: '',
-  model: 'deepseek-chat',
-  builtin: true,
-})
 
 interface AreaLike {
   get: (keys: string[]) => Promise<Record<string, unknown>>
   set: (items: Record<string, unknown>) => Promise<void>
+  remove?: (keys: string[]) => Promise<void>
 }
 
 interface StorageLike {
@@ -40,7 +30,6 @@ type ChromeStorage = typeof chrome.storage
 
 export interface ModelState {
   models: ModelConfig[]
-  builtinOverride: Partial<ModelConfig> | null
   activeModelId: string
 }
 
@@ -57,11 +46,11 @@ function text(value: unknown): string {
   return String(value ?? '').trim()
 }
 
-export function normalizeModel(model: unknown, fallbackId = ''): ModelConfig | null {
+export function normalizeModel(model: unknown): ModelConfig | null {
   if (!model || typeof model !== 'object') return null
 
   const record = model as Record<string, unknown>
-  const id = text(record.id) || fallbackId
+  const id = text(record.id)
   if (!id) return null
 
   return {
@@ -70,7 +59,6 @@ export function normalizeModel(model: unknown, fallbackId = ''): ModelConfig | n
     baseUrl: text(record.baseUrl),
     apiKey: text(record.apiKey),
     model: text(record.model),
-    builtin: Boolean(record.builtin),
   }
 }
 
@@ -83,19 +71,8 @@ export function normalizeModels(value: unknown): ModelConfig[] {
     .filter((model): model is ModelConfig => {
       if (!model || seen.has(model.id)) return false
       seen.add(model.id)
-      return model.id !== DEFAULT_MODEL.id
+      return true
     })
-}
-
-export function buildBuiltinModel(override: Partial<ModelConfig> | null): ModelConfig {
-  const normalized = normalizeModel({
-    ...DEFAULT_MODEL,
-    ...(override && typeof override === 'object' ? override : {}),
-    id: DEFAULT_MODEL.id,
-    builtin: true,
-  })
-
-  return normalized || { ...DEFAULT_MODEL }
 }
 
 export function validateBaseUrl(value: string): boolean {
@@ -118,37 +95,33 @@ export async function loadModelState(storageOverride?: ChromeStorage): Promise<M
   const localData = await storage.local.get(Object.values(MODEL_STORAGE_KEYS))
 
   const models = normalizeModels(localData[MODEL_STORAGE_KEYS.models])
-  const builtinOverride =
-    localData[MODEL_STORAGE_KEYS.builtinOverride] &&
-    typeof localData[MODEL_STORAGE_KEYS.builtinOverride] === 'object'
-      ? (localData[MODEL_STORAGE_KEYS.builtinOverride] as Partial<ModelConfig>)
-      : null
-  let activeModelId = text(localData[MODEL_STORAGE_KEYS.activeModelId])
+  const activeModelId = text(localData[MODEL_STORAGE_KEYS.activeModelId])
 
-  if (!activeModelId) {
-    activeModelId = DEFAULT_MODEL.id
-    await storage.local.set({ [MODEL_STORAGE_KEYS.activeModelId]: activeModelId })
+  // 激活 id 失效（模型被删）时回退到第一个；无模型时为空串
+  const effectiveActiveId =
+    models.length === 0 ? '' : models.some((model) => model.id === activeModelId) ? activeModelId : models[0].id
+
+  if (effectiveActiveId !== activeModelId) {
+    await storage.local.set({ [MODEL_STORAGE_KEYS.activeModelId]: effectiveActiveId })
   }
 
-  return { models, builtinOverride, activeModelId }
+  return { models, activeModelId: effectiveActiveId }
 }
 
 export async function saveModelState(
-  { models, builtinOverride = null }: { models: ModelConfig[]; builtinOverride?: Partial<ModelConfig> | null },
+  { models }: { models: ModelConfig[] },
   storageOverride?: ChromeStorage
 ): Promise<void> {
   const storage = getStorage(storageOverride)
   await storage.local.set({
     [MODEL_STORAGE_KEYS.models]: normalizeModels(models),
-    [MODEL_STORAGE_KEYS.builtinOverride]:
-      builtinOverride && typeof builtinOverride === 'object' ? builtinOverride : null,
   })
 }
 
 export async function saveActiveModelId(modelId: string, storageOverride?: ChromeStorage): Promise<void> {
   const storage = getStorage(storageOverride)
   await storage.local.set({
-    [MODEL_STORAGE_KEYS.activeModelId]: text(modelId) || DEFAULT_MODEL.id,
+    [MODEL_STORAGE_KEYS.activeModelId]: text(modelId),
   })
 }
 
@@ -158,20 +131,18 @@ export async function getModelConfig(modelId: string, storageOverride?: ChromeSt
   model: string
 }> {
   const state = await loadModelState(storageOverride)
-  const builtin = buildBuiltinModel(state.builtinOverride)
-  const selected = [builtin, ...state.models].find((item) => item.id === text(modelId)) || builtin
+  const selected = state.models.find((item) => item.id === text(modelId))
 
   return {
-    baseUrl: selected.baseUrl,
-    apiKey: selected.apiKey,
-    model: selected.model,
+    baseUrl: selected?.baseUrl || '',
+    apiKey: selected?.apiKey || '',
+    model: selected?.model || '',
   }
 }
 
-export async function getActiveModel(storageOverride?: ChromeStorage): Promise<ModelConfig> {
+export async function getActiveModel(storageOverride?: ChromeStorage): Promise<ModelConfig | null> {
   const state = await loadModelState(storageOverride)
-  const builtin = buildBuiltinModel(state.builtinOverride)
-  return [builtin, ...state.models].find((item) => item.id === state.activeModelId) || builtin
+  return state.models.find((item) => item.id === state.activeModelId) || null
 }
 
 export function isConfiguredModel(model: ModelConfig | null | undefined): boolean {

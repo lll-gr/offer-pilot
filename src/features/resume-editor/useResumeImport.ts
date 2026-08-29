@@ -43,6 +43,7 @@ export function useResumeImport({ onImported, onRawText }: UseResumeImportOption
 
       const activeModel = await getActiveModel()
       if (!isConfiguredModel(activeModel)) {
+          // isConfiguredModel 收窄了 null，但 TS 对跨 await 的窄化不保留，显式断言
         updateStatus('error', '请先在侧边栏的模型设置中配置可用模型。')
         return
       }
@@ -57,7 +58,7 @@ export function useResumeImport({ onImported, onRawText }: UseResumeImportOption
         }
 
         const prompt = buildResumeImportPrompt(limited)
-        const aiText = await callAI(activeModel.id, prompt, 'resume_import')
+        const aiText = await callAI(activeModel!.id, prompt, 'resume_import')
         const parsed = parseJsonFromAiText(aiText)
         const normalized = normalizeResumeProfile(parsed)
 

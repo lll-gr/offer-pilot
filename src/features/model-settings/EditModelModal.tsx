@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import EyeIcon from '@/assets/icons/eye.svg'
+import { testModelConnection } from '@/ai/chat'
 import { Modal } from '@/components/Modal'
 import type { ModelConfig } from '@/models/storage'
 import type { ModelFormValues } from './useModels'
@@ -10,19 +11,16 @@ interface EditModelModalProps {
   onClose: () => void
   editingModel: ModelConfig | null
   saveModel: (editingModelId: string | null, values: ModelFormValues) => Promise<void>
+  /** 新建表单默认值（由 useModels 提供） */
+  createDefaults?: ModelFormValues
 }
 
-const CREATE_DEFAULTS: ModelFormValues = {
-  name: 'DeepSeek',
-  baseUrl: 'https://api.deepseek.com/v1',
-  apiKey: '',
-  model: 'deepseek-chat',
-}
-
-export function EditModelModal({ open, onClose, editingModel, saveModel }: EditModelModalProps) {
-  const [form, setForm] = useState<ModelFormValues>(CREATE_DEFAULTS)
+export function EditModelModal({ open, onClose, editingModel, saveModel, createDefaults }: EditModelModalProps) {
+  const defaults = createDefaults || { name: '', baseUrl: '', apiKey: '', model: '' }
+  const [form, setForm] = useState<ModelFormValues>(defaults)
   const [status, setStatus] = useState<{ type: string; message: string }>({ type: '', message: '' })
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
 
   useEffect(() => {
@@ -36,12 +34,35 @@ export function EditModelModal({ open, onClose, editingModel, saveModel }: EditM
         model: editingModel.model,
       })
     } else {
-      setForm(CREATE_DEFAULTS)
+      setForm(defaults)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults 为静态值，仅随 open/editingModel 重置
   }, [open, editingModel])
 
   const update = (key: keyof ModelFormValues) => (event: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }))
+  }
+
+  const handleTest = async () => {
+    const { baseUrl, apiKey, model } = form
+    if (!baseUrl || !apiKey || !model) {
+      setStatus({ type: 'error', message: '请先填写 Base URL / API Key / 模型 ID 再测试' })
+      return
+    }
+
+    setTesting(true)
+    setStatus({ type: '', message: '' })
+
+    // 探针复用 chat.ts（与真实填充同一条 URL 拼装/超时/错误翻译链路），表单值直测不落盘
+    const result = await testModelConnection({ baseUrl, apiKey, model })
+
+    if (result.ok) {
+      setStatus({ type: 'success', message: `连接成功（${result.elapsedMs}ms），模型可用` })
+    } else {
+      const hint = result.error.includes('网络请求失败') ? '（网络不通或地址错误）' : ''
+      setStatus({ type: 'error', message: `连接失败：${result.error}${hint}` })
+    }
+    setTesting(false)
   }
 
   const handleSave = async () => {
@@ -63,9 +84,14 @@ export function EditModelModal({ open, onClose, editingModel, saveModel }: EditM
       open={open}
       onClose={onClose}
       footer={
-        <button className="op-btn op-btn-primary op-btn-block" disabled={saving} onClick={() => void handleSave()}>
-          {saving ? '保存中...' : '保存'}
-        </button>
+        <div className="op-modal-footer-row">
+          <button className="op-btn op-btn-ghost" disabled={testing || saving} onClick={() => void handleTest()}>
+            {testing ? '测试中...' : '测试连接'}
+          </button>
+          <button className="op-btn op-btn-primary" disabled={saving} onClick={() => void handleSave()}>
+            {saving ? '保存中...' : '保存'}
+          </button>
+        </div>
       }
     >
       <div className="op-field">

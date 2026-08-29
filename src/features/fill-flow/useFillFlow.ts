@@ -132,6 +132,7 @@ export function useFillFlow({
 
         const activeModel = await getActiveModel()
         if (!isConfiguredModel(activeModel)) {
+          // isConfiguredModel 收窄了 null，但 TS 对跨 await 的窄化不保留，显式断言
           onLog('error', '请先在设置中配置模型')
           onRequireSettings()
           return
@@ -176,7 +177,7 @@ export function useFillFlow({
 
           const response = await sendTabMessage<StartFillResponse>(tab.id, {
             action: 'startFill',
-            modelId: activeModel.id,
+            modelId: activeModel!.id,
             resumeProfile,
             fillMode: actionConfig.fillMode,
             scope: actionConfig.scope,

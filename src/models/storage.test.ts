@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  buildBuiltinModel,
-  DEFAULT_MODEL,
   getModelConfig,
   getActiveModel,
   isConfiguredModel,
@@ -48,7 +46,6 @@ const customModel = {
   baseUrl: 'https://api.moonshot.cn/v1',
   apiKey: 'sk-secret',
   model: 'moonshot-v1',
-  builtin: false,
 }
 
 describe('model storage', () => {
@@ -56,22 +53,12 @@ describe('model storage', () => {
     const models = normalizeModels([
       customModel,
       { ...customModel, name: 'duplicate id' },
-      { id: 'builtin-deepseek', name: '内置模型占位' },
       null,
     ])
 
     expect(models.length).toBe(1)
     expect(models[0].name).toBe('Kimi')
     expect(normalizeModel(null)).toBeNull()
-  })
-
-  it('builds builtin model with override applied but id/builtin pinned', () => {
-    const builtin = buildBuiltinModel({ name: 'DeepSeek 改', apiKey: 'sk-1' })
-
-    expect(builtin.id).toBe(DEFAULT_MODEL.id)
-    expect(builtin.builtin).toBe(true)
-    expect(builtin.name).toBe('DeepSeek 改')
-    expect(builtin.baseUrl).toBe(DEFAULT_MODEL.baseUrl)
   })
 
   it('validates base URLs', () => {
@@ -81,22 +68,41 @@ describe('model storage', () => {
     expect(() => validateBaseUrl('not-a-url')).toThrow(/不是有效地址/)
   })
 
-  it('persists and reloads model state with active fallback', async () => {
+  it('starts with an empty model list and empty active id', async () => {
     const { storage } = createFakeStorage()
 
-    await saveModelState({ models: [customModel], builtinOverride: { apiKey: 'sk-2' } }, storage)
     const state = await loadModelState(storage)
 
-    expect(state.models.map((m) => m.id)).toEqual(['custom-1'])
-    expect(state.builtinOverride?.apiKey).toBe('sk-2')
-    expect(state.activeModelId).toBe(DEFAULT_MODEL.id)
-
-    await saveActiveModelId('custom-1', storage)
-    const active = await getActiveModel(storage)
-    expect(active.id).toBe('custom-1')
+    expect(state.models).toEqual([])
+    expect(state.activeModelId).toBe('')
+    expect(await getActiveModel(storage)).toBeNull()
   })
 
-  it('getModelConfig resolves the requested model or falls back to builtin', async () => {
+  it('persists and reloads models with active fallback', async () => {
+    const { storage } = createFakeStorage()
+
+    await saveModelState({ models: [customModel] }, storage)
+    await saveActiveModelId('custom-1', storage)
+
+    const state = await loadModelState(storage)
+    expect(state.models.map((m) => m.id)).toEqual(['custom-1'])
+    expect(state.activeModelId).toBe('custom-1')
+
+    const active = await getActiveModel(storage)
+    expect(active?.id).toBe('custom-1')
+  })
+
+  it('falls back to the first model when active id is stale (deleted)', async () => {
+    const { storage } = createFakeStorage({
+      [MODEL_STORAGE_KEYS.models]: [customModel, { ...customModel, id: 'custom-2', name: 'DeepSeek' }],
+      [MODEL_STORAGE_KEYS.activeModelId]: 'deleted-model',
+    })
+
+    const state = await loadModelState(storage)
+    expect(state.activeModelId).toBe('custom-1')
+  })
+
+  it('getModelConfig resolves the requested model or returns empty config', async () => {
     const { storage } = createFakeStorage({
       [MODEL_STORAGE_KEYS.models]: [customModel],
       [MODEL_STORAGE_KEYS.activeModelId]: 'custom-1',
@@ -105,8 +111,8 @@ describe('model storage', () => {
     const custom = await getModelConfig('custom-1', storage)
     expect(custom.model).toBe('moonshot-v1')
 
-    const fallback = await getModelConfig('missing-id', storage)
-    expect(fallback.model).toBe(DEFAULT_MODEL.model)
+    const missing = await getModelConfig('missing-id', storage)
+    expect(missing).toEqual({ baseUrl: '', apiKey: '', model: '' })
   })
 
   it('isConfiguredModel requires all three fields', () => {

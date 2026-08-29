@@ -56,7 +56,10 @@ export function ResumeEditor() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [localProfile, setLocalProfile] = useState<ResumeProfile | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [activeSection, setActiveSection] = useState<string>(SECTION_DEFINITIONS[0]?.key || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // 编程式跳转后短暂抑制观察器回写（平滑滚动途中的中间区块不覆盖目标高亮）
+  const navLockUntilRef = useRef(0)
 
   const importFlow = useResumeImport({
     onImported: async (importedProfile, text) => {
@@ -183,6 +186,8 @@ export function ResumeEditor() {
       next.delete(sectionKey)
       return next
     })
+    setActiveSection(sectionKey)
+    navLockUntilRef.current = Date.now() + 800
     window.setTimeout(() => {
       document.getElementById(`resume-section-${sectionKey}`)?.scrollIntoView({
         behavior: 'smooth',
@@ -190,6 +195,48 @@ export function ResumeEditor() {
       })
     }, 0)
   }, [])
+
+  // 反向联动：滚动到哪个区块，左侧导航高亮哪个。
+  // IntersectionObserver 只做「该重新计算了」的触发信号；
+  // 高亮归属每次实时测量所有区块（视口顶带内最靠上的区块胜出），
+  // 不依赖回调 entries 的快照（快速滚动时 entries 会缺块导致高亮乱跳）。
+  useEffect(() => {
+    if (!loaded || typeof IntersectionObserver === 'undefined') return
+
+    const recompute = () => {
+      if (Date.now() < navLockUntilRef.current) return
+
+      let best: { key: string; top: number } | null = null
+      for (const section of SECTION_DEFINITIONS) {
+        const el = document.getElementById(`resume-section-${section.key}`)
+        if (!el) continue
+        const rect = el.getBoundingClientRect()
+        // 视口顶带：[96px, 60%] 之间视为当前区块（上方 sticky 头让出 96px）
+        const bandTop = 96
+        const bandBottom = window.innerHeight * 0.6
+        const overlaps = rect.bottom > bandTop && rect.top < bandBottom
+        if (!overlaps) continue
+        // 顶带内最靠上的区块优先；同 top（首个区块）取先出现者
+        if (!best || rect.top < best.top) {
+          best = { key: section.key, top: rect.top }
+        }
+      }
+      if (best) setActiveSection(best.key)
+    }
+
+    const observer = new IntersectionObserver(recompute, {
+      rootMargin: '0px 0px -40% 0px',
+      threshold: [0, 0.1, 0.5, 1],
+    })
+
+    for (const section of SECTION_DEFINITIONS) {
+      const el = document.getElementById(`resume-section-${section.key}`)
+      if (el) observer.observe(el)
+    }
+    recompute()
+
+    return () => observer.disconnect()
+  }, [loaded])
 
   const handleSave = useCallback(async () => {
     const nextProfile = normalizeResumeProfile(editingProfile)
@@ -199,6 +246,8 @@ export function ResumeEditor() {
     markClean()
     importFlow.updateStatus('success', '标准简历已保存，侧边栏自动填充会立即使用这份数据。')
   }, [editingProfile, importFlow, markClean, rawText, saveActive])
+
+  const statusBorder = STATUS_BORDER_COLORS[importFlow.status.type] || 'var(--border)'
 
   const handleImportTextChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -230,14 +279,21 @@ export function ResumeEditor() {
   if (!loaded) {
     return (
       <div className="op-editor-shell">
+        <header className="op-editor-header">
+          <div className="op-editor-header-main">
+            <img className="op-logo" src="/icons/icon128.png" alt="AI 简历填表助手图标" />
+            <div className="op-editor-header-copy">
+              <h1>简历配置</h1>
+              <p>在宽页面里维护标准简历，保存后会同步给侧边栏自动填充流程。</p>
+            </div>
+          </div>
+        </header>
         <main className="op-editor-main">
           <div className="op-hint">正在加载标准简历...</div>
         </main>
       </div>
     )
   }
-
-  const statusBorder = STATUS_BORDER_COLORS[importFlow.status.type] || 'var(--border)'
 
   return (
     <div className="op-editor-shell">
@@ -260,17 +316,89 @@ export function ResumeEditor() {
       </header>
 
       <main className="op-editor-main">
-        <SlotBar
-          slots={slots}
-          activeSlotId={activeSlotId}
-          company={activeSlot?.company || ''}
-          position={activeSlot?.position || ''}
-          onSwitch={(slotId) => void switchSlot(slotId)}
-          onCreate={() => void createNewSlot({ name: '新档位' })}
-          onDuplicate={() => void createNewSlot({ name: '复制档位', copyFromId: activeSlotId })}
-          onDelete={() => void deleteSlot(activeSlotId)}
-          onMetaChange={(meta) => void updateMeta(meta)}
-        />
+        <div className="op-editor-topbar">
+          <div className="op-editor-topbar-left">
+          <SlotBar
+            slots={slots}
+            activeSlotId={activeSlotId}
+            company={activeSlot?.company || ''}
+            position={activeSlot?.position || ''}
+            onSwitch={(slotId) => void switchSlot(slotId)}
+            onCreate={(options) => void createNewSlot({ name: options.name || '新档位' })}
+            onDuplicate={(options) =>
+              void createNewSlot({
+                name: options.name || '复制档位',
+                copyFromId: options.copyFromId || activeSlotId,
+              })
+            }
+            onDelete={() => void deleteSlot(activeSlotId)}
+            onMetaChange={(meta) => updateMeta(meta)}
+            compact
+          />
+
+          <div className="op-editor-topbar-meta">
+            <div className="op-field">
+              <label htmlFor="slotCompany">目标公司</label>
+              <input
+                id="slotCompany"
+                type="text"
+                placeholder="如：字节跳动（可选）"
+                defaultValue={activeSlot?.company || ''}
+                onBlur={(event) => updateMeta({ company: event.target.value })}
+              />
+            </div>
+            <div className="op-field">
+              <label htmlFor="slotPosition">目标职位</label>
+              <input
+                id="slotPosition"
+                type="text"
+                placeholder="如：后端开发工程师（可选）"
+                defaultValue={activeSlot?.position || ''}
+                onBlur={(event) => updateMeta({ position: event.target.value })}
+              />
+            </div>
+          </div>
+          </div>
+
+          <div className="op-editor-import op-editor-import-compact">
+            <label htmlFor="resumeImportText">导入简历</label>
+            <p className="op-editor-import-desc">
+              粘贴原始简历文本，或上传 PDF 自动提取内容，AI 会解析并预填到下方标准字段；导入后请检查并点击「保存标准简历」。
+            </p>
+            <textarea
+              id="resumeImportText"
+              className="op-ctrl-textarea op-editor-import-textarea"
+              placeholder="粘贴原始简历文本，或上传 PDF 后自动填入这里。"
+              value={rawText}
+              onChange={handleImportTextChange}
+              rows={4}
+            />
+            <div className="op-editor-import-actions">
+              <button
+                className="op-btn op-btn-primary"
+                disabled={importFlow.importing}
+                onClick={() => void importFlow.importFromText(rawText.trim())}
+              >
+                {importFlow.importing ? '导入中...' : 'AI 导入到标准简历'}
+              </button>
+              <button
+                className="op-btn op-btn-ghost"
+                disabled={importFlow.importing}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                上传 PDF 并导入
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              hidden
+              onChange={(event) => void handlePdfChange(event)}
+            />
+          </div>
+        </div>
+
         <div className="op-hint" style={{ borderColor: statusBorder }}>
           {importFlow.status.text}
         </div>
@@ -279,6 +407,7 @@ export function ResumeEditor() {
             profile={editingProfile}
             collapsedSections={collapsedSections}
             onNavigate={handleNavigate}
+            activeSection={activeSection}
           />
           <div className="op-editor-form-host">
             {SECTION_DEFINITIONS.map((section) => (
@@ -297,52 +426,6 @@ export function ResumeEditor() {
           </div>
         </div>
 
-        <div className="op-editor-import">
-          <div className="op-editor-import-header">
-            <div className="op-editor-import-icon">⬆</div>
-            <div className="op-editor-import-copy">
-              <div className="op-editor-import-title">导入辅助（可选）</div>
-              <div className="op-editor-import-desc">
-                粘贴原始简历文本或上传 PDF，用 AI 预填标准字段，导入后请检查并保存。
-              </div>
-            </div>
-          </div>
-          <div className="op-editor-import-body">
-            <div className="op-field" style={{ marginBottom: 0 }}>
-              <label htmlFor="resumeImportText">原始简历文本</label>
-              <textarea
-                id="resumeImportText"
-                className="op-ctrl-textarea"
-                placeholder="粘贴原始简历文本，或上传 PDF 后自动填入这里。"
-                value={rawText}
-                onChange={handleImportTextChange}
-              />
-            </div>
-            <div className="op-editor-import-actions">
-              <button
-                className="op-btn op-btn-primary"
-                disabled={importFlow.importing}
-                onClick={() => void importFlow.importFromText(rawText.trim())}
-              >
-                {importFlow.importing ? '导入中...' : 'AI 导入到标准简历'}
-              </button>
-              <button
-                className="op-btn op-btn-ghost"
-                disabled={importFlow.importing}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                上传 PDF 并导入
-              </button>
-            </div>
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            hidden
-            onChange={(event) => void handlePdfChange(event)}
-          />
-        </div>
       </main>
     </div>
   )

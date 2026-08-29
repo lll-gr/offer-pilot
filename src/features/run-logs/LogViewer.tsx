@@ -9,9 +9,11 @@ interface LogViewerProps {
   exportState: LogExportState
   selecting: boolean
   onSelectDirectory: () => void
+  /** Modal 内嵌模式：去掉外层卡片壳（标题/边距由 Modal 提供） */
+  embedded?: boolean
 }
 
-export function LogViewer({ logs, onClear, exportState, selecting, onSelectDirectory }: LogViewerProps) {
+export function LogViewer({ logs, onClear, exportState, selecting, onSelectDirectory, embedded }: LogViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -21,10 +23,10 @@ export function LogViewer({ logs, onClear, exportState, selecting, onSelectDirec
     }
   }, [logs])
 
-  return (
-    <div className="op-log">
+  const body = (
+    <>
       <div className="op-section-header">
-        <span>运行日志</span>
+        <span>{embedded ? '操作' : '运行日志'}</span>
         <div className="op-section-actions">
           <button
             className="op-btn-text"
@@ -47,6 +49,12 @@ export function LogViewer({ logs, onClear, exportState, selecting, onSelectDirec
           </div>
         ))}
       </div>
-    </div>
+    </>
   )
+
+  if (embedded) {
+    return <div className="op-log op-log-embedded">{body}</div>
+  }
+
+  return <div className="op-log">{body}</div>
 }

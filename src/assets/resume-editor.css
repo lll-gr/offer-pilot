@@ -393,3 +393,103 @@ body.resume-editor-page {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── 顶栏：档位 + 导入同一行（两列） ─────────────────── */
+
+.op-editor-topbar {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.op-editor-topbar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 0 0 340px;
+}
+
+.op-editor-topbar .op-slotbar-compact {
+  margin-bottom: 0;
+}
+
+.op-editor-topbar .op-slotbar-compact .op-slotbar-row {
+  align-items: flex-end;
+}
+
+.op-editor-import-compact {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  border-style: solid;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-editor-import-compact label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--op-text);
+}
+
+.op-editor-import-compact .op-editor-import-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--op-text-3);
+}
+
+/* field-sizing: content —— 纯 CSS 自动高度（Chromium 123+），max-height 封顶后内部滚动 */
+.op-editor-import-compact textarea {
+  width: 100%;
+  field-sizing: content;
+  min-height: 96px;
+  max-height: 200px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.op-editor-import-compact .op-editor-import-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.op-editor-topbar-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--op-bg-inset);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+}
+
+.op-editor-topbar-meta .op-field {
+  margin-bottom: 0;
+}
+
+/* ─── 导航高亮（双向联动） ───────────────────────────── */
+
+.op-editor-nav-btn.active {
+  background: var(--op-accent-soft);
+  border-color: var(--op-accent);
+}
+
+.op-editor-nav-btn.active .op-editor-nav-label {
+  color: var(--op-accent);
+}
+
+@media (max-width: 960px) {
+  .op-editor-topbar {
+    flex-direction: column;
+  }
+
+  .op-editor-topbar-left {
+    flex: 1 1 auto;
+  }
+}

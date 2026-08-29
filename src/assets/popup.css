@@ -242,8 +242,11 @@ body {
   display: none;
 }
 
+/* panel 内部统一纵向间距（统计卡/引导条/按钮组/提示彼此 16px） */
 .op-panel.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ============================================================
@@ -686,7 +689,7 @@ body {
   border: 1px solid var(--op-border);
   border-radius: var(--op-radius-md);
   padding: 8px;
-  max-height: 240px;
+  height: 240px;
   overflow-y: auto;
   font-size: 12px;
   line-height: 1.5;
@@ -1128,4 +1131,87 @@ body {
   gap: 5px;
   max-height: 170px;
   overflow-y: auto;
+}
+
+/* 空简历引导条 */
+
+.op-empty-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px dashed var(--op-accent);
+  border-radius: var(--op-radius-md);
+  background: var(--op-accent-soft);
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s ease;
+}
+
+.op-empty-resume:hover {
+  opacity: 0.85;
+}
+
+.op-empty-resume-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--op-text);
+}
+
+.op-empty-resume-action {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--op-accent);
+}
+
+/* header 图标徽标（日志条数） */
+
+.op-icon-btn {
+  position: relative;
+}
+
+.op-icon-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--op-accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Modal footer 双按钮行（测试连接 + 保存） */
+
+.op-modal-footer-row {
+  display: flex;
+  gap: 8px;
+}
+
+.op-modal-footer-row .op-btn {
+  flex: 1;
+}
+
+/* 日志 Modal 内嵌模式：列表占满弹窗主体并内部滚动 */
+
+.op-log-embedded .op-log-list {
+  height: 46vh;
+  max-height: 420px;
+}
+
+/* 模型列表空态 */
+
+.op-model-empty {
+  padding: 18px 12px;
+  font-size: 13px;
+  color: var(--op-text-2);
+  text-align: center;
+  line-height: 1.6;
 }

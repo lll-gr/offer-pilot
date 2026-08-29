@@ -26,15 +26,17 @@ export function ResumeSummaryGrid({ profile }: { profile: ResumeProfile }) {
   )
 }
 
-/** 全页编辑器左侧导航 */
+/** 全页编辑器左侧导航（activeSection 驱动高亮：点击跳转与滚动观察双向联动） */
 export function ResumeNav({
   profile,
   collapsedSections,
   onNavigate,
+  activeSection,
 }: {
   profile: ResumeProfile
   collapsedSections: Set<string>
   onNavigate: (sectionKey: string) => void
+  activeSection?: string
 }) {
   const sectionStats = getSectionStats(profile)
 
@@ -48,12 +50,13 @@ export function ResumeNav({
           filledItems: 0,
         }
         const hasValue = section.type === 'list' ? stats.filledItems > 0 : stats.filledFields > 0
+        const isActive = activeSection === section.key
 
         return (
           <button
             key={section.key}
             type="button"
-            className={`op-editor-nav-btn${hasValue ? ' has-value' : ''}`}
+            className={`op-editor-nav-btn${hasValue ? ' has-value' : ''}${isActive ? ' active' : ''}`}
             onClick={() => onNavigate(section.key)}
           >
             <span className="op-editor-nav-label">{section.label}</span>

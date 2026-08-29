@@ -1,12 +1,11 @@
 /**
  * 模型配置状态 hook：加载/保存/激活/删除，供侧边栏设置弹窗使用。
+ * 模型列表纯用户自建（无内置项），空列表时激活 id 为空串。
  */
 
 import { useCallback, useEffect, useState } from 'react'
 
 import {
-  DEFAULT_MODEL,
-  buildBuiltinModel,
   loadModelState,
   saveActiveModelId,
   saveModelState,
@@ -21,14 +20,22 @@ export interface ModelFormValues {
   model: string
 }
 
+/** 新建模型的表单默认值（常用入门配置，可改） */
+const CREATE_DEFAULTS: ModelFormValues = {
+  name: 'DeepSeek',
+  baseUrl: 'https://api.deepseek.com/v1',
+  apiKey: '',
+  model: 'deepseek-chat',
+}
+
 export function useModels() {
   const [models, setModels] = useState<ModelConfig[]>([])
-  const [activeModelId, setActiveModelId] = useState<string>(DEFAULT_MODEL.id)
+  const [activeModelId, setActiveModelId] = useState<string>('')
 
   const refresh = useCallback(async () => {
     const state = await loadModelState()
-    setModels([buildBuiltinModel(state.builtinOverride), ...state.models])
-    setActiveModelId(state.activeModelId || DEFAULT_MODEL.id)
+    setModels(state.models)
+    setActiveModelId(state.activeModelId)
   }, [])
 
   useEffect(() => {
@@ -48,12 +55,11 @@ export function useModels() {
       const state = await loadModelState()
       const modelsWithoutCurrent = state.models.filter((model) => model.id !== modelId)
 
-      await saveModelState({
-        models: modelsWithoutCurrent,
-        builtinOverride: state.builtinOverride,
-      })
+      await saveModelState({ models: modelsWithoutCurrent })
+
+      // 删的是激活模型时回退到剩余第一个（loadModelState 内处理空列表）
       if (state.activeModelId === modelId) {
-        await saveActiveModelId(DEFAULT_MODEL.id)
+        await saveActiveModelId(modelsWithoutCurrent[0]?.id || '')
       }
       await refresh()
     },
@@ -73,35 +79,27 @@ export function useModels() {
       const state = await loadModelState()
       const nextModels = [...state.models]
 
-      if (editingModelId === DEFAULT_MODEL.id) {
-        await saveModelState({
-          models: nextModels,
-          builtinOverride: { name, baseUrl, apiKey, model },
-        })
-      } else if (editingModelId) {
+      if (editingModelId) {
         const index = nextModels.findIndex((item) => item.id === editingModelId)
         if (index !== -1) {
           nextModels[index] = { ...nextModels[index], name, baseUrl, apiKey, model }
         }
-        await saveModelState({
-          models: nextModels,
-          builtinOverride: state.builtinOverride,
-        })
       } else {
-        nextModels.push({
+        const created = {
           id: `custom-${Date.now()}`,
           name,
           baseUrl,
           apiKey,
           model,
-          builtin: false,
-        })
-        await saveModelState({
-          models: nextModels,
-          builtinOverride: state.builtinOverride,
-        })
+        }
+        nextModels.push(created)
+        // 首个模型自动激活，省一次点击
+        if (nextModels.length === 1) {
+          await saveActiveModelId(created.id)
+        }
       }
 
+      await saveModelState({ models: nextModels })
       await refresh()
     },
     [refresh]
@@ -114,5 +112,6 @@ export function useModels() {
     activateModel,
     deleteModel,
     saveModel,
+    createDefaults: CREATE_DEFAULTS,
   }
 }

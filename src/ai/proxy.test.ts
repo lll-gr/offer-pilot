@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildApiUrl, callAI, type ResponseLike } from './proxy'
+import { callAI, type ResponseLike } from './proxy'
+// buildApiUrl 的测试随实现迁至 chat.test.ts
 
 function createResponse(status: number, body: unknown): ResponseLike {
   return {
@@ -36,20 +37,6 @@ function createDeps(responses: ResponseLike[]) {
   }
   return { deps, bodies }
 }
-
-describe('buildApiUrl', () => {
-  it('appends /chat/completions and strips query/hash', () => {
-    expect(buildApiUrl('https://api.example.com/v1')).toBe('https://api.example.com/v1/chat/completions')
-    expect(buildApiUrl('https://api.example.com/v1/chat/completions')).toBe('https://api.example.com/v1/chat/completions')
-    expect(buildApiUrl('https://api.example.com/v1?x=1')).toBe('https://api.example.com/v1/chat/completions')
-  })
-
-  it('allows http only for local hosts', () => {
-    expect(() => buildApiUrl('http://localhost:8787/v1')).not.toThrow()
-    expect(() => buildApiUrl('http://api.example.com/v1')).toThrow(/HTTPS/)
-    expect(() => buildApiUrl('not-a-url')).toThrow(/不是有效地址/)
-  })
-})
 
 describe('callAI', () => {
   it('requests JSON mode and returns message content', async () => {

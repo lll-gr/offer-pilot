@@ -12,6 +12,7 @@ interface FillPanelProps {
   onRun: (actionKey: FillActionKey) => void
   onCancel: () => void
   onClearCache: () => void
+  onRequireResume: () => void
 }
 
 const ACTION_BUTTONS: Array<{ key: FillActionKey; className: string }> = [
@@ -30,6 +31,7 @@ export function FillPanel({
   onRun,
   onCancel,
   onClearCache,
+  onRequireResume,
 }: FillPanelProps) {
   return (
     <section className="op-panel active">
@@ -48,15 +50,17 @@ export function FillPanel({
         </div>
       </div>
 
+      {!hasResumeData ? (
+        <button className="op-empty-resume" onClick={onRequireResume}>
+          <span className="op-empty-resume-title">还没有标准简历</span>
+          <span className="op-empty-resume-action">去填写 →</span>
+        </button>
+      ) : null}
+
       <div className="op-actions">
         {ACTION_BUTTONS.map(({ key, className }) => {
           const config = FILL_ACTIONS[key]
           const isCurrent = runningAction === key
-          const label = !hasResumeData
-            ? '请先填写标准简历'
-            : isCurrent && isFilling
-              ? config.runningText
-              : config.triggerText
 
           return (
             <button
@@ -66,7 +70,7 @@ export function FillPanel({
               onClick={() => onRun(key)}
             >
               {key === 'overwritePage' ? <DocIcon width={18} height={18} /> : null}
-              <span>{label}</span>
+              <span>{isCurrent && isFilling ? config.runningText : config.triggerText}</span>
             </button>
           )
         })}

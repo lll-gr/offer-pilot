@@ -43,13 +43,19 @@ export function SettingsModal({ open, onClose, modelsApi, onLog }: SettingsModal
   }
 
   const handleDelete = async (model: ModelConfig) => {
-    if (!window.confirm('确定要删除这个模型吗？')) return
+    if (!window.confirm(`确定要删除模型「${model.name}」吗？`)) return
     await modelsApi.deleteModel(model.id)
+    onLog('info', `已删除模型：${model.name}`)
   }
 
   return (
     <Modal title="DeepSeek / OpenAI 兼容模型配置" open={open} onClose={onClose}>
       <div className="op-model-list">
+        {modelsApi.models.length === 0 ? (
+          <div className="op-model-empty">
+            还没有模型配置。添加一个 DeepSeek / OpenAI 兼容模型后即可使用 AI 导入与自动填充。
+          </div>
+        ) : null}
         {modelsApi.models.map((model) => (
           <div
             key={model.id}
@@ -65,21 +71,16 @@ export function SettingsModal({ open, onClose, modelsApi, onLog }: SettingsModal
               onClick={(event) => event.stopPropagation()}
             />
             <div className="op-model-info">
-              <div className="op-model-name">
-                {model.name}
-                {model.builtin ? <span className="op-model-badge">内置</span> : null}
-              </div>
+              <div className="op-model-name">{model.name}</div>
               <div className="op-model-meta">{model.model}</div>
             </div>
             <div className="op-model-actions" onClick={(event) => event.stopPropagation()}>
               <button className="op-icon-btn" title="编辑" onClick={() => openEdit(model)}>
                 <PencilIcon width={15} height={15} />
               </button>
-              {model.builtin ? null : (
-                <button className="op-icon-btn" title="删除" onClick={() => void handleDelete(model)}>
-                  <TrashIcon width={15} height={15} />
-                </button>
-              )}
+              <button className="op-icon-btn" title="删除" onClick={() => void handleDelete(model)}>
+                <TrashIcon width={15} height={15} />
+              </button>
             </div>
           </div>
         ))}
@@ -87,7 +88,7 @@ export function SettingsModal({ open, onClose, modelsApi, onLog }: SettingsModal
 
       <button className="op-btn op-btn-ghost op-btn-block" onClick={openCreate}>
         <PlusIcon width={15} height={15} />
-        <span>添加自定义模型</span>
+        <span>添加模型</span>
       </button>
 
       <EditModelModal
@@ -95,6 +96,7 @@ export function SettingsModal({ open, onClose, modelsApi, onLog }: SettingsModal
         onClose={closeEdit}
         editingModel={editingModel}
         saveModel={modelsApi.saveModel}
+        createDefaults={modelsApi.createDefaults}
       />
     </Modal>
   )
