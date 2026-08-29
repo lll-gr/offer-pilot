@@ -25,15 +25,13 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
 ]
 
 interface SettingsPanelProps {
-  /** 顶层导航（可跳填充/简历/设置内不变） */
-  onNavigate: (view: { name: 'fill' } | { name: 'resume' } | { name: 'settings' }) => void
   onLog: (level: string, message: string) => void
   logs: LogItem[]
   onClearLogs: () => void
   logExport: ReturnType<typeof useLogExport>
 }
 
-export function SettingsPanel({ onNavigate, onLog, logs, onClearLogs, logExport }: SettingsPanelProps) {
+export function SettingsPanel({ onLog, logs, onClearLogs, logExport }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionKey>('models')
   const [settings, setSettings] = useState<FillSettings>({ ...DEFAULT_SETTINGS })
   const [settingsStatus, setSettingsStatus] = useState('')
@@ -63,15 +61,6 @@ export function SettingsPanel({ onNavigate, onLog, logs, onClearLogs, logExport 
 
   return (
     <>
-      <div className="op-settings-back">
-        <button className="op-btn-text" onClick={() => onNavigate({ name: 'fill' })}>
-          ← 返回填充
-        </button>
-        {settingsStatus && section === 'behavior' ? (
-          <span className="op-settings-status">{settingsStatus}</span>
-        ) : null}
-      </div>
-
       <div className="op-settings-nav">
         {SECTIONS.map((item) => (
           <button
@@ -84,6 +73,9 @@ export function SettingsPanel({ onNavigate, onLog, logs, onClearLogs, logExport 
           </button>
         ))}
       </div>
+      {settingsStatus && section === 'behavior' ? (
+        <div className="op-settings-status">{settingsStatus}</div>
+      ) : null}
 
       {section === 'models' ? <ModelsPanel onLog={onLog} /> : null}
       {section === 'behavior' ? (

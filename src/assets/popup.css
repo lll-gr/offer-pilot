@@ -1260,16 +1260,6 @@ body {
 
 /* 侧栏设置视图 */
 
-.op-settings-back {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: var(--op-bg-card);
-  border: 1px solid var(--op-border);
-  border-radius: var(--op-radius-md);
-}
-
 .op-settings-nav {
   display: flex;
   gap: 4px;

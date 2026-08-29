@@ -192,7 +192,6 @@ export function SidepanelApp() {
           </section>
         ) : (
           <SettingsPanel
-            onNavigate={setView}
             onLog={fillEvents.addLog}
             logs={fillEvents.logs}
             onClearLogs={fillEvents.clearLogs}
