@@ -4,10 +4,7 @@
 
 import { useCallback, useState } from 'react'
 
-import GearIcon from '@/assets/icons/gear.svg'
 import GithubIcon from '@/assets/icons/github.svg'
-import ListIcon from '@/assets/icons/list.svg'
-import { Modal } from '@/components/Modal'
 import { FillPanel } from '@/features/fill-flow/FillPanel'
 import { FillProgressPanel } from '@/features/fill-flow/FillProgressPanel'
 import { FillReportPanel } from '@/features/fill-flow/FillReportPanel'
@@ -20,7 +17,6 @@ import { useResumeSlots } from '@/features/resume-editor/useResumeSlots'
 import { useModels } from '@/features/model-settings/useModels'
 import { SettingsPanel } from '@/features/model-settings/SettingsPanel'
 import { UpdateBanner } from '@/features/update-checker/UpdateBanner'
-import { LogViewer } from '@/features/run-logs/LogViewer'
 import { useLogExport } from '@/features/run-logs/useLogExport'
 import { useFillEvents } from '@/features/run-logs/useFillEvents'
 import type { FillStats } from '@/features/run-logs/useFillEvents'
@@ -29,15 +25,22 @@ import { hasAnyFilledField } from '@/resume/schema'
 
 const INITIAL_STATS: FillStats = { fieldCount: 0, mappedCount: 0, filledCount: 0 }
 
+/** 顶层视图（page-agent 判别联合模式：视图与参数内联，编译期可查） */
+type View = { name: 'fill' } | { name: 'resume' } | { name: 'settings' }
+
+const NAV_ITEMS: Array<{ view: View; label: string }> = [
+  { view: { name: 'fill' }, label: '自动填充' },
+  { view: { name: 'resume' }, label: '标准简历' },
+  { view: { name: 'settings' }, label: '设置' },
+]
+
 export function SidepanelApp() {
-  const [activeTab, setActiveTab] = useState<'fill' | 'resume'>('fill')
-  const [settingsView, setSettingsView] = useState(false)
+  const [view, setView] = useState<View>({ name: 'fill' })
   const [stats, setStats] = useState<FillStats>(INITIAL_STATS)
   const [status, setStatus] = useState<{ type: string; text: string }>({
     type: '',
     text: '等待开始',
   })
-  const [logsOpen, setLogsOpen] = useState(false)
 
   const resumeApi = useResumeSlots()
   const modelsApi = useModels()
@@ -72,8 +75,8 @@ export function SidepanelApp() {
     onStatus: updateStatus,
     onSessionBegin: fillEvents.beginFillSession,
     onSessionEnd: handleSessionEnd,
-    onRequireResume: () => setActiveTab('resume'),
-    onRequireSettings: () => setSettingsView(true),
+    onRequireResume: () => setView({ name: 'resume' }),
+    onRequireSettings: () => setView({ name: 'settings' }),
   })
 
   const hasResumeData = hasAnyFilledField(resumeApi.profile)
@@ -96,61 +99,34 @@ export function SidepanelApp() {
         <div className="op-header-actions">
           <button
             className="op-icon-btn"
-            title={`运行日志（${fillEvents.logs.length} 条）`}
-            onClick={() => setLogsOpen(true)}
-          >
-            <ListIcon width={19} height={19} />
-            {fillEvents.logs.length > 0 ? (
-              <span className="op-icon-badge">{fillEvents.logs.length > 99 ? '99+' : fillEvents.logs.length}</span>
-            ) : null}
-          </button>
-          <button
-            className="op-icon-btn"
             title="GitHub 仓库"
             onClick={() => void chrome.tabs.create({ url: 'https://github.com/lll-gr/offer-pilot' })}
           >
             <GithubIcon width={18} height={18} />
-          </button>
-          <button
-            className="op-icon-btn"
-            title="设置"
-            onClick={() => setSettingsView(true)}
-          >
-            <GearIcon width={19} height={19} />
           </button>
         </div>
       </header>
 
       <UpdateBanner />
 
-      <main className="op-main">
-        {settingsView ? (
-          <SettingsPanel onBack={() => setSettingsView(false)} onLog={fillEvents.addLog} />
-        ) : (
-        <>
-        <div className="op-tabs" role="tablist">
+      <nav className="op-navstrip" role="navigation">
+        {NAV_ITEMS.map(({ view: navView, label }) => (
           <button
-            role="tab"
-            aria-selected={activeTab === 'fill'}
-            className={`op-tab ${activeTab === 'fill' ? 'active' : ''}`}
-            onClick={() => setActiveTab('fill')}
+            key={label}
+            type="button"
+            className={`op-navstrip-btn ${view.name === navView.name ? 'active' : ''}`}
+            onClick={() => setView(navView)}
           >
-            自动填充
+            {label}
           </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'resume'}
-            className={`op-tab ${activeTab === 'resume' ? 'active' : ''}`}
-            onClick={() => setActiveTab('resume')}
-          >
-            标准简历
-          </button>
-        </div>
+        ))}
+      </nav>
 
-        {activeTab === 'fill' ? (
+      <main className="op-main">
+        {view.name === 'fill' ? (
           <>
             {!hasModelKey ? (
-              <button className="op-empty-resume" onClick={() => setSettingsView(true)}>
+              <button className="op-empty-resume" onClick={() => setView({ name: 'settings' })}>
                 <span className="op-empty-resume-title">模型未配置，填充前请先填 API Key</span>
                 <span className="op-empty-resume-action">去配置 →</span>
               </button>
@@ -162,9 +138,9 @@ export function SidepanelApp() {
               runningAction={fillFlow.runningAction}
               fillTip={fillFlow.fillTip}
               onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
-              onClearCache={() => setSettingsView(true)}
+              onClearCache={() => setView({ name: 'settings' })}
               onCancel={() => void fillFlow.cancelFill()}
-              onRequireResume={() => setActiveTab('resume')}
+              onRequireResume={() => setView({ name: 'resume' })}
             />
             {fillFlow.isFilling ? (
               <FillProgressPanel progress={fillEvents.progress} />
@@ -175,7 +151,7 @@ export function SidepanelApp() {
               </>
             )}
           </>
-        ) : (
+        ) : view.name === 'resume' ? (
           <section className="op-panel active">
             <div className="op-section">
               <div className="op-section-header">
@@ -214,21 +190,17 @@ export function SidepanelApp() {
               <ResumeSummaryGrid profile={resumeApi.profile} />
             </div>
           </section>
-        )}
-        </>
+        ) : (
+          <SettingsPanel
+            onNavigate={setView}
+            onLog={fillEvents.addLog}
+            logs={fillEvents.logs}
+            onClearLogs={fillEvents.clearLogs}
+            logExport={logExport}
+          />
         )}
       </main>
 
-      <Modal title={`运行日志（${fillEvents.logs.length}）`} open={logsOpen} onClose={() => setLogsOpen(false)}>
-        <LogViewer
-          logs={fillEvents.logs}
-          onClear={fillEvents.clearLogs}
-          exportState={logExport.state}
-          selecting={logExport.selecting}
-          onSelectDirectory={() => void logExport.selectDirectory()}
-          embedded
-        />
-      </Modal>
 
     </div>
   )

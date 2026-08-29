@@ -1,6 +1,7 @@
 /**
  * 缓存管理：展示本地填表决策缓存条目（站点/路径/条数/更新时间），
- * 支持按站点清除与全部清空。数据结构与 plan/cache.ts 的 MappingCacheEntry 一致。
+ * 支持按站点清除与全部清空。设置分区形态：直接平铺 + 空态引导。
+ * 数据结构与 plan/cache.ts 的 MappingCacheEntry 一致。
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -44,7 +45,6 @@ async function readCacheRows(): Promise<CacheRow[]> {
 
 export function CacheManager({ onLog }: CacheManagerProps) {
   const [rows, setRows] = useState<CacheRow[]>([])
-  const [expanded, setExpanded] = useState(false)
 
   const refresh = useCallback(async () => {
     setRows(await readCacheRows())
@@ -75,45 +75,42 @@ export function CacheManager({ onLog }: CacheManagerProps) {
   }
 
   const clearAll = async () => {
+    if (!window.confirm('确定清空全部映射缓存？下次填充将重新调用 AI 建立映射。')) return
     await chrome.storage.local.set({ [MAPPING_CACHE_KEY]: {} })
     onLog('success', '已清空全部映射缓存')
     await refresh()
   }
 
   if (rows.length === 0) {
-    return expanded ? <div className="op-hint">暂无缓存条目</div> : null
+    return (
+      <div className="op-cache-empty">
+        还没有任何缓存。完成一次自动填充后，该页面的字段映射与填充决策会缓存在这里，下次同结构表单直接复用（跳过 AI）。
+      </div>
+    )
   }
 
   return (
     <div className="op-cache-manager">
-      <button className="op-btn-text" onClick={() => setExpanded((prev) => !prev)}>
-        {expanded ? '收起缓存管理' : `映射缓存（${rows.length} 个站点）`}
-      </button>
-
-      {expanded ? (
-        <div className="op-cache-manager-body">
-          <div className="op-cache-list">
-            {rows.map((row) => (
-              <div className="op-cache-row" key={row.key}>
-                <div className="op-cache-info">
-                  <span className="op-cache-host" title={`${row.host}${row.path}`}>
-                    {row.host}
-                  </span>
-                  <span className="op-cache-meta">
-                    {row.count} 条 · {new Date(row.updatedAt).toLocaleString()}
-                  </span>
-                </div>
-                <button className="op-btn op-btn-ghost op-btn-xs" onClick={() => void clearHost(row.host)}>
-                  清除
-                </button>
-              </div>
-            ))}
+      <div className="op-cache-list">
+        {rows.map((row) => (
+          <div className="op-cache-row" key={row.key}>
+            <div className="op-cache-info">
+              <span className="op-cache-host" title={`${row.host}${row.path}`}>
+                {row.host}
+              </span>
+              <span className="op-cache-meta">
+                {row.count} 条决策 · {new Date(row.updatedAt).toLocaleString()}
+              </span>
+            </div>
+            <button className="op-btn op-btn-ghost op-btn-xs" onClick={() => void clearHost(row.host)}>
+              清除
+            </button>
           </div>
-          <button className="op-btn op-btn-ghost op-btn-block op-btn-xs" onClick={() => void clearAll()}>
-            清空全部缓存
-          </button>
-        </div>
-      ) : null}
+        ))}
+      </div>
+      <button className="op-btn op-btn-ghost op-btn-block op-btn-xs" onClick={() => void clearAll()}>
+        清空全部缓存（{rows.length} 个站点）
+      </button>
     </div>
   )
 }

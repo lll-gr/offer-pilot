@@ -207,35 +207,40 @@ body {
    Tabs
    ============================================================ */
 
-.op-tabs {
+/* 顶部导航条（header 下方，全视图平级切换） */
+
+.op-navstrip {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--op-bg-inset);
-  border-radius: var(--op-radius-md);
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--op-border);
+  background: var(--op-bg-card);
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
-.op-tab {
-  flex: 1;
-  padding: 8px 12px;
+.op-navstrip-btn {
+  padding: 9px 14px;
   border: none;
   background: transparent;
-  border-radius: var(--op-radius-sm);
   font-size: 13px;
   font-weight: 500;
   color: var(--op-text-2);
   cursor: pointer;
-  transition: all 0.15s ease;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.op-tab:hover {
+.op-navstrip-btn:hover {
   color: var(--op-text);
 }
 
-.op-tab.active {
-  background: var(--op-bg-card);
-  color: var(--op-text);
-  box-shadow: var(--op-shadow-sm);
+.op-navstrip-btn.active {
+  color: var(--op-accent);
+  border-bottom-color: var(--op-accent);
+  font-weight: 600;
 }
 
 .op-panel {
@@ -1371,27 +1376,13 @@ body {
   color: var(--op-text-3);
 }
 
-.op-redline-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.op-redline-item {
-  padding: 10px 12px;
-  border: 1px solid var(--op-border);
-  border-left: 3px solid var(--op-danger);
-  border-radius: var(--op-radius-md);
-  background: var(--op-bg);
-}
-
-.op-redline-item strong {
+.op-cache-empty,
+.op-log-empty {
+  padding: 24px 14px;
   font-size: 12px;
-}
-
-.op-redline-item p {
-  margin: 3px 0 0;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--op-text-2);
+  line-height: 1.7;
+  color: var(--op-text-3);
+  text-align: center;
+  border: 1px dashed var(--op-border);
+  border-radius: var(--op-radius-md);
 }

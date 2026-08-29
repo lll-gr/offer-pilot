@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import {
   loadModelState,
+  MODEL_STORAGE_KEYS,
   saveActiveModelId,
   saveModelState,
   validateBaseUrl,
@@ -40,6 +41,23 @@ export function useModels() {
 
   useEffect(() => {
     void refresh()
+  }, [refresh])
+
+  // 跨实例/跨上下文同步：模型或激活 id 在 storage 变化时刷新（幂等，自触发无害）
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.onChanged) return
+
+    const listener = (
+      changes: Record<string, { newValue?: unknown }>,
+      areaName: string
+    ) => {
+      if (areaName !== 'local') return
+      if (!changes[MODEL_STORAGE_KEYS.models] && !changes[MODEL_STORAGE_KEYS.activeModelId]) return
+      void refresh()
+    }
+
+    chrome.storage.onChanged.addListener(listener)
+    return () => chrome.storage.onChanged.removeListener(listener)
   }, [refresh])
 
   const activateModel = useCallback(

@@ -8,24 +8,32 @@ import { useCallback, useEffect, useState } from 'react'
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from '@/settings/storage'
 import type { FillSettings } from '@/settings/storage'
 import { CacheManager } from '@/features/fill-flow/CacheManager'
+import type { LogItem } from '@/features/run-logs/useFillEvents'
+import type { useLogExport } from '@/features/run-logs/useLogExport'
+import { LogViewer } from '@/features/run-logs/LogViewer'
 import { ModelsPanel } from './ModelsPanel'
 import { FillBehaviorPanel } from './FillBehaviorPanel'
 
-type SectionKey = 'models' | 'behavior' | 'cache' | 'about'
+type SectionKey = 'models' | 'behavior' | 'cache' | 'logs' | 'about'
 
 const SECTIONS: Array<{ key: SectionKey; label: string }> = [
   { key: 'models', label: '模型' },
   { key: 'behavior', label: '填充行为' },
   { key: 'cache', label: '缓存' },
-  { key: 'about', label: '红线·关于' },
+  { key: 'logs', label: '运行日志' },
+  { key: 'about', label: '关于' },
 ]
 
 interface SettingsPanelProps {
-  onBack: () => void
+  /** 顶层导航（可跳填充/简历/设置内不变） */
+  onNavigate: (view: { name: 'fill' } | { name: 'resume' } | { name: 'settings' }) => void
   onLog: (level: string, message: string) => void
+  logs: LogItem[]
+  onClearLogs: () => void
+  logExport: ReturnType<typeof useLogExport>
 }
 
-export function SettingsPanel({ onBack, onLog }: SettingsPanelProps) {
+export function SettingsPanel({ onNavigate, onLog, logs, onClearLogs, logExport }: SettingsPanelProps) {
   const [section, setSection] = useState<SectionKey>('models')
   const [settings, setSettings] = useState<FillSettings>({ ...DEFAULT_SETTINGS })
   const [settingsStatus, setSettingsStatus] = useState('')
@@ -56,7 +64,7 @@ export function SettingsPanel({ onBack, onLog }: SettingsPanelProps) {
   return (
     <>
       <div className="op-settings-back">
-        <button className="op-btn-text" onClick={onBack}>
+        <button className="op-btn-text" onClick={() => onNavigate({ name: 'fill' })}>
           ← 返回填充
         </button>
         {settingsStatus && section === 'behavior' ? (
@@ -81,7 +89,33 @@ export function SettingsPanel({ onBack, onLog }: SettingsPanelProps) {
       {section === 'behavior' ? (
         <FillBehaviorPanel settings={settings} onChange={updateSetting} onReset={resetSettings} />
       ) : null}
-      {section === 'cache' ? <CacheManager onLog={onLog} /> : null}
+      {section === 'cache' ? (
+        <section className="op-panel active">
+          <div className="op-settings-section">
+            <div className="op-settings-section-header">映射缓存</div>
+            <p className="op-settings-section-desc">
+              填充决策（字段映射 + 动作）按页面缓存，命中即跳过 AI 调用；纠错后的决策也会写入。
+            </p>
+            <CacheManager onLog={onLog} />
+          </div>
+        </section>
+      ) : null}
+      {section === 'logs' ? (
+        <section className="op-panel active">
+          <div className="op-settings-section">
+            <div className="op-settings-section-header">运行日志</div>
+            <p className="op-settings-section-desc">填充过程与 AI 决策的完整记录，可导出到本地目录留存。</p>
+            <LogViewer
+              logs={logs}
+              onClear={onClearLogs}
+              exportState={logExport.state}
+              selecting={logExport.selecting}
+              onSelectDirectory={() => void logExport.selectDirectory()}
+              embedded
+            />
+          </div>
+        </section>
+      ) : null}
       {section === 'about' ? <AboutPanel /> : null}
     </>
   )
@@ -92,24 +126,6 @@ function AboutPanel() {
 
   return (
     <section className="op-panel active">
-      <div className="op-settings-section">
-        <div className="op-settings-section-header">安全红线（不可配置）</div>
-        <div className="op-redline-list">
-          <div className="op-redline-item">
-            <strong>永不自动提交表单</strong>
-            <p>插件只填写内容，最终「提交/投递」永远由你点击。这是底线，不提供开关。</p>
-          </div>
-          <div className="op-redline-item">
-            <strong>敏感字段强制人工</strong>
-            <p>身份证件号、政治面貌、银行卡、社保、紧急联系人等一律跳过自动填充，交由人工确认。</p>
-          </div>
-          <div className="op-redline-item">
-            <strong>数据不出本地</strong>
-            <p>简历、Key、缓存全存本地；仅填充时把表单结构与简历预览发给你自己配置的模型。</p>
-          </div>
-        </div>
-      </div>
-
       <div className="op-settings-section">
         <div className="op-settings-section-header">关于</div>
         <p className="op-settings-section-desc">

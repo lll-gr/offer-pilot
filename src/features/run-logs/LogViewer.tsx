@@ -42,12 +42,16 @@ export function LogViewer({ logs, onClear, exportState, selecting, onSelectDirec
       </div>
       <div className="op-hint">{exportState.statusText}</div>
       <div className="op-log-list" ref={containerRef}>
-        {logs.map((log) => (
-          <div key={log.id} className={`op-log-item op-log-level-${log.level}`}>
-            <span className="op-log-time">{log.time}</span>
-            <span className="op-log-msg">{log.message}</span>
-          </div>
-        ))}
+        {logs.length === 0 ? (
+          <div className="op-log-empty">还没有日志。发起一次自动填充后，过程记录会出现在这里。</div>
+        ) : (
+          logs.map((log) => (
+            <div key={log.id} className={`op-log-item op-log-level-${log.level}`}>
+              <span className="op-log-time">{log.time}</span>
+              <span className="op-log-msg">{log.message}</span>
+            </div>
+          ))
+        )}
       </div>
     </>
   )
