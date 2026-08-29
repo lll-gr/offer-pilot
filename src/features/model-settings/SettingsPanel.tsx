@@ -3,7 +3,7 @@
  * 分区导航（模型/填充行为/缓存/红线）+ 内容区，侧栏内切换不跳页。
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from '@/settings/storage'
 import type { FillSettings } from '@/settings/storage'
@@ -11,6 +11,12 @@ import { CacheManager } from '@/features/fill-flow/CacheManager'
 import type { LogItem } from '@/features/run-logs/useFillEvents'
 import type { useLogExport } from '@/features/run-logs/useLogExport'
 import { LogViewer } from '@/features/run-logs/LogViewer'
+import {
+  downloadConfigFile,
+  exportConfig,
+  importConfig,
+  parseImportedConfig,
+} from '@/settings/transfer'
 import { ModelsPanel } from './ModelsPanel'
 import { FillBehaviorPanel } from './FillBehaviorPanel'
 
@@ -108,16 +114,71 @@ export function SettingsPanel({ onLog, logs, onClearLogs, logExport }: SettingsP
           </div>
         </section>
       ) : null}
-      {section === 'about' ? <AboutPanel /> : null}
+      {section === 'about' ? <AboutPanel onLog={onLog} /> : null}
     </>
   )
 }
 
-function AboutPanel() {
+function AboutPanel({ onLog }: { onLog: (level: string, message: string) => void }) {
   const version = chrome.runtime.getManifest().version
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+
+  const handleExport = async () => {
+    setBusy(true)
+    try {
+      const config = await exportConfig()
+      downloadConfigFile(config)
+      onLog('success', `已导出配置（${config.data.models.length} 个模型 · ${config.data.resumeSlots.length} 个简历档位）`)
+    } catch (error) {
+      onLog('error', `导出失败：${(error as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (importInputRef.current) importInputRef.current.value = ''
+    if (!file) return
+
+    if (!window.confirm('导入将覆盖当前的模型配置、全部简历档位与应用设置，确定继续？')) return
+
+    setBusy(true)
+    try {
+      const text = await file.text()
+      const config = parseImportedConfig(text)
+      const result = await importConfig(config)
+      onLog('success', `导入完成：${result.modelCount} 个模型 · ${result.slotCount} 个简历档位`)
+    } catch (error) {
+      onLog('error', `导入失败：${(error as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <section className="op-panel active">
+      <div className="op-settings-section">
+        <div className="op-settings-section-header">配置备份</div>
+        <p className="op-settings-section-desc">
+          导出模型配置（含 API Key）、全部简历档位与应用设置为 JSON 文件；换机或重装后导入即可恢复。
+        </p>
+        <div className="op-settings-transfer-actions">
+          <button className="op-btn op-btn-ghost" disabled={busy} onClick={() => void handleExport()}>
+            导出配置
+          </button>
+          <button
+            className="op-btn op-btn-ghost"
+            disabled={busy}
+            onClick={() => importInputRef.current?.click()}
+          >
+            导入配置
+          </button>
+          <input ref={importInputRef} type="file" accept="application/json" hidden onChange={(event) => void handleImportFile(event)} />
+        </div>
+      </div>
+
       <div className="op-settings-section">
         <div className="op-settings-section-header">关于</div>
         <p className="op-settings-section-desc">

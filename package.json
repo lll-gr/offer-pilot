@@ -1,6 +1,6 @@
 {
   "name": "offer-pilot",
-  "version": "0.0.1",
+  "version": "0.0.7",
   "private": true,
   "type": "module",
   "description": "AI 简历填表助手：粘贴简历文本，AI 解析并自动填写网页表单（不自动提交）",

@@ -1376,3 +1376,8 @@ body {
   border: 1px dashed var(--op-border);
   border-radius: var(--op-radius-md);
 }
+
+.op-settings-transfer-actions {
+  display: flex;
+  gap: 10px;
+}
