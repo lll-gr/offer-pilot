@@ -5,7 +5,7 @@
 
 import { normalizeFieldText } from './scanner/field-text'
 import { countControls, isVisible } from './scanner/controls'
-import { clickLikeUser, scrollIntoView } from './filler/dom'
+import { clickLikeUser, scrollIntoView } from './execute/dom'
 
 const DEEP_SCAN_MAX_ROUNDS = 5
 const DEEP_SCAN_INITIAL_DELAY = 250

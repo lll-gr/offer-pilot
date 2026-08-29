@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import type { LogExportState } from './useLogExport'
-import type { LogItem } from './useRunLog'
+import type { LogItem } from './useFillEvents'
 
 interface LogViewerProps {
   logs: LogItem[]

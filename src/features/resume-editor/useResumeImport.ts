@@ -19,6 +19,9 @@ interface UseResumeImportOptions {
   onRawText: (text: string) => Promise<void>
 }
 
+/** PDF 导入大小上限（与 config.yaml 声明一致，防超大文件卡死 worker） */
+const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024
+
 export function useResumeImport({ onImported, onRawText }: UseResumeImportOptions) {
   const [importing, setImporting] = useState(false)
   const [status, setStatus] = useState<{ type: PageStatusType; text: string }>({
@@ -76,6 +79,11 @@ export function useResumeImport({ onImported, onRawText }: UseResumeImportOption
         return
       }
 
+      if (file.size > MAX_PDF_SIZE_BYTES) {
+        updateStatus('error', `PDF 过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请上传 10MB 以内的文件。`)
+        return
+      }
+
       setImporting(true)
       updateStatus('info', `正在提取 PDF 文本：${file.name}`)
 
@@ -90,8 +98,7 @@ export function useResumeImport({ onImported, onRawText }: UseResumeImportOption
 
         await onRawText(text)
         updateStatus('success', 'PDF 文本提取完成，开始导入到标准简历...')
-        setImporting(false)
-        await importFromText(text)
+        await importFromText(text) // 内部自行接管 importing 状态（无闪烁：React 批处理合并两次 set）
       } catch (error) {
         updateStatus('error', `PDF 导入失败：${(error as Error).message}`)
         setImporting(false)

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  calculateTextSimilarity,
   cleanRuntimeText,
   deriveFillValue,
   hasMeaningfulFillValue,
+  isLongTextSimilarEnough,
   normalizeCheckboxCandidates,
   normalizeTransform,
   prepareTextValueForRuntime,
@@ -125,5 +127,31 @@ describe('hasMeaningfulFillValue', () => {
     expect(hasMeaningfulFillValue(['x'])).toBe(true)
     expect(hasMeaningfulFillValue('')).toBe(false)
     expect(hasMeaningfulFillValue([])).toBe(false)
+  })
+})
+
+describe('long-text similarity', () => {
+  const intro = '我是北京大学计算机专业的应届毕业生，熟练掌握 Python 与深度学习，曾在字节跳动实习参与推荐系统优化。'
+
+  it('scores 1 for identical and 0.8 for containment', () => {
+    expect(calculateTextSimilarity(intro, intro)).toBe(1)
+    expect(calculateTextSimilarity(`前缀 ${intro} 后缀`, intro)).toBe(0.8)
+  })
+
+  it('ignores whitespace and case differences', () => {
+    expect(calculateTextSimilarity(intro.replace(/，/g, ' ， '), intro)).toBe(1)
+    expect(calculateTextSimilarity('Hello World From Offer Pilot', 'hello  world  from  offer pilot')).toBe(1)
+  })
+
+  it('gives low score to unrelated content', () => {
+    expect(calculateTextSimilarity(intro, '今天天气很好，适合出去散步和爬山锻炼身体。')).toBeLessThan(0.3)
+    expect(calculateTextSimilarity('', intro)).toBe(0)
+  })
+
+  it('applies threshold only to long texts', () => {
+    expect(isLongTextSimilarEnough(intro.replace(/[\s，]/g, ''), intro)).toBe(true) // 规范化空白仍相似
+    expect(isLongTextSimilarEnough('今天天气很好适合散步', intro)).toBe(false)
+    expect(isLongTextSimilarEnough('张三', '李四')).toBe(false) // 短文本不适用
+    expect(isLongTextSimilarEnough('张三', '张三')).toBe(false) // 短文本精确相等也不走该路径
   })
 })

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  computeAgeFromBirthDate,
+  computeIsFreshGraduate,
   createEmptyResumeProfile,
   formatSectionSummary,
   getCatalogWithValues,
@@ -62,6 +64,17 @@ describe('resume schema', () => {
     expect(getValueByPath(profile, 'identityAndAuthorization.personalIdType')).toBe('身份证')
   })
 
+  it('derives age and fresh-graduate status on normalize', () => {
+    const profile = normalizeResumeProfile({
+      personal: { fullName: '陈嘉昊', birthDate: '2001-06-15' },
+      educations: [{ school: '浙江大学', dateRange: '2020.09 - 2024.06' }],
+    })
+
+    expect(getValueByPath(profile, 'personal.isFreshGraduate')).toMatch(/^(是|否)$/)
+    // 年龄为纯数字字符串（精确值随当前时间变化，形状断言避免测试腐烂）
+    expect(getValueByPath(profile, 'personal.age')).toMatch(/^\d{1,3}$/)
+  })
+
   it('maps select values through alias groups', () => {
     const profile = normalizeResumeProfile({
       personal: { gender: 'male' },
@@ -80,6 +93,41 @@ describe('resume schema', () => {
     const educations = target.educations as unknown[]
     expect(educations.length).toBe(3)
     expect(getValueByPath(target, 'educations.2.school')).toBe('清华')
+  })
+
+  describe('derived fill-time values (pure functions with injected now)', () => {
+    // 固定“当前时间”：2026-08-29
+    const NOW = new Date(2026, 7, 29)
+
+    it('computes full-year age with birthday-not-yet-reached adjustment', () => {
+      expect(computeAgeFromBirthDate('2001-03-15', NOW)).toBe('25')
+      expect(computeAgeFromBirthDate('2001-08-29', NOW)).toBe('25') // 生日当天
+      expect(computeAgeFromBirthDate('2001-08-30', NOW)).toBe('24') // 生日未到
+      expect(computeAgeFromBirthDate('2001-09', NOW)).toBe('24') // 月精度
+      expect(computeAgeFromBirthDate('2001', NOW)).toBe('25') // 年精度按 1 月 1 日
+    })
+
+    it('rejects invalid or out-of-range birth dates', () => {
+      expect(computeAgeFromBirthDate('', NOW)).toBe('')
+      expect(computeAgeFromBirthDate('not-a-date', NOW)).toBe('')
+      expect(computeAgeFromBirthDate('1899-01-01', NOW)).toBe('') // 超界
+      expect(computeAgeFromBirthDate('2030-01-01', NOW)).toBe('') // 未来
+    })
+
+    it('judges fresh-graduate within 24 months of latest graduation', () => {
+      expect(computeIsFreshGraduate(['2026-06'], NOW)).toBe('是')
+      expect(computeIsFreshGraduate(['2024-09'], NOW)).toBe('是') // 24 个月内
+      expect(computeIsFreshGraduate(['2024-06'], NOW)).toBe('否') // 超过 24 个月
+      expect(computeIsFreshGraduate(['2027-06'], NOW)).toBe('是') // 在读未毕业
+      expect(computeIsFreshGraduate([], NOW)).toBe('')
+      expect(computeIsFreshGraduate([''], NOW)).toBe('')
+    })
+
+    it('uses the latest graduation date across multiple educations', () => {
+      expect(computeIsFreshGraduate(['2020-06', '2026-06'], NOW)).toBe('是')
+      expect(computeIsFreshGraduate(['2026-06', '2020-06'], NOW)).toBe('是')
+      expect(computeIsFreshGraduate(['2015-06', '2020-06'], NOW)).toBe('否')
+    })
   })
 
   it('section stats and summaries reflect filled values', () => {

@@ -72,6 +72,48 @@ export function hasMeaningfulFillValue(value: unknown): boolean {
   return String(value ?? '').trim().length > 0
 }
 
+/**
+ * 长文本相似度（0-1）：containment 记 0.8；否则取字符重叠与（拉丁文）词重叠的最大值。
+ * 用于自我介绍类 textarea 写入后的宽松校验——框架常规范化空白/换行导致精确比对失败，
+ * 完全不同的内容仍会被拦下。仅适用于长文本（短字段必须精确匹配）。
+ */
+export function calculateTextSimilarity(actual: string, expected: string): number {
+  const left = String(actual ?? '').toLowerCase().replace(/\s+/g, '')
+  const right = String(expected ?? '').toLowerCase().replace(/\s+/g, '')
+  if (!left || !right) return 0
+  if (left === right) return 1
+  if (left.includes(right) || right.includes(left)) return 0.8
+
+  const leftChars = new Set(left)
+  const rightChars = new Set(right)
+  const charOverlap =
+    leftChars.size === 0 || rightChars.size === 0
+      ? 0
+      : [...leftChars].filter((char) => rightChars.has(char)).length /
+        new Set([...leftChars, ...rightChars]).size
+
+  const leftWords = new Set(left.split(/[^a-z0-9]+/).filter(Boolean))
+  const rightWords = new Set(right.split(/[^a-z0-9]+/).filter(Boolean))
+  const wordOverlap =
+    leftWords.size === 0 || rightWords.size === 0
+      ? 0
+      : [...leftWords].filter((word) => rightWords.has(word)).length /
+        new Set([...leftWords, ...rightWords]).size
+
+  return Math.max(charOverlap, wordOverlap)
+}
+
+/** 长文本宽松校验阈值：低于该值视为写入失败 */
+export const LONG_TEXT_SIMILARITY_THRESHOLD = 0.3
+
+/** 长文本（≥10 字符）写入后的相似度判定；短文本不适用（须精确匹配） */
+export function isLongTextSimilarEnough(actual: string, expected: string): boolean {
+  const left = String(actual ?? '').trim()
+  const right = String(expected ?? '').trim()
+  if (left.length < 10 || right.length < 10) return false
+  return calculateTextSimilarity(left, right) >= LONG_TEXT_SIMILARITY_THRESHOLD
+}
+
 function getDatePart(value: unknown, part: 'year' | 'month' | 'day'): string {
   const text = String(value || '').trim()
   if (!text) return ''

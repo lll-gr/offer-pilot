@@ -1,5 +1,5 @@
 import DocIcon from '@/assets/icons/doc.svg'
-import type { FillStats } from '@/features/run-logs/useRunLog'
+import type { FillStats } from '@/features/run-logs/useFillEvents'
 import { FILL_ACTIONS } from './useFillFlow'
 import type { FillActionKey } from './useFillFlow'
 
@@ -10,6 +10,7 @@ interface FillPanelProps {
   runningAction: FillActionKey | null
   fillTip: string | null
   onRun: (actionKey: FillActionKey) => void
+  onCancel: () => void
   onClearCache: () => void
 }
 
@@ -27,6 +28,7 @@ export function FillPanel({
   runningAction,
   fillTip,
   onRun,
+  onCancel,
   onClearCache,
 }: FillPanelProps) {
   return (
@@ -68,9 +70,15 @@ export function FillPanel({
             </button>
           )
         })}
-        <button className="op-btn op-btn-ghost op-btn-lg" onClick={onClearCache}>
-          清理映射缓存
-        </button>
+        {isFilling ? (
+          <button className="op-btn op-btn-ghost op-btn-lg op-btn-stop" onClick={onCancel}>
+            停止填充
+          </button>
+        ) : (
+          <button className="op-btn op-btn-ghost op-btn-lg" onClick={onClearCache}>
+            清理映射缓存
+          </button>
+        )}
         {fillTip ? <div className="op-hint">{fillTip}</div> : null}
       </div>
     </section>

@@ -119,3 +119,24 @@ describe('waitForSegmentChange', () => {
     expect(result).toBe(true)
   })
 })
+
+describe('findNextStepCandidates semantics', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('classifies advance vs submit semantic', () => {
+    const makeButton = (text: string) =>
+      ({ textContent: text, disabled: false, getClientRects: () => [{}] }) as unknown as HTMLElement
+
+    const buttons = [makeButton('下一步'), makeButton('提交申请'), makeButton('保存'), makeButton('继续')]
+    const scope = { querySelectorAll: () => buttons } as unknown as ParentNode
+    vi.stubGlobal('getComputedStyle', () => ({ visibility: 'visible', display: 'block' }))
+
+    const candidates = findNextStepCandidates(scope)
+    expect(candidates.find((c) => c.text === '下一步')?.semantic).toBe('advance')
+    expect(candidates.find((c) => c.text === '继续')?.semantic).toBe('advance')
+    expect(candidates.find((c) => c.text === '提交申请')?.semantic).toBe('submit')
+    expect(candidates.find((c) => c.text === '保存')?.semantic).toBe('submit')
+  })
+})

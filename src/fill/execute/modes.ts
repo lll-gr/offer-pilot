@@ -1,18 +1,10 @@
 /**
- * 填充模式辅助：已有值检测（增量模式跳过）、薪资回退值、
- * 以及按 runtime kind 分发的统一 fillOne 入口。
+ * 填充模式辅助：已有值检测（增量模式跳过）、薪资回退值。
+ * 控件分发已迁移至 strategies.ts 的 FILL_STRATEGIES 注册表。
  */
 
-import type { FieldRuntime, FillResult, FillMode } from '../types'
-import { fillReadonlyDateRuntime } from './date-panel'
-import {
-  fillCheckboxGroup,
-  fillContentEditable,
-  fillRadioGroup,
-  fillSelect,
-  fillTextLike,
-} from './dom'
-import { isReadonlyDateLikeRuntime } from './runtime'
+import type { FieldRuntime } from '../types'
+import { readCustomSelectDisplay } from './custom-select'
 
 /** 该字段当前是否已有用户内容（增量模式下跳过） */
 export function hasExistingFieldValue(runtime: FieldRuntime | undefined): boolean {
@@ -30,6 +22,10 @@ export function hasExistingFieldValue(runtime: FieldRuntime | undefined): boolea
     return true
   }
 
+  if (runtime.kind === 'custom_select') {
+    return Boolean(readCustomSelectDisplay(runtime.el as HTMLElement | undefined))
+  }
+
   if (runtime.kind === 'contenteditable') {
     return Boolean(String((runtime.el as HTMLElement)?.textContent || '').trim())
   }
@@ -38,7 +34,7 @@ export function hasExistingFieldValue(runtime: FieldRuntime | undefined): boolea
     return Boolean((runtime.el as HTMLInputElement)?.files?.length)
   }
 
-  return Boolean(String((runtime.el as HTMLInputElement)?.value ?? '').trim())
+  return Boolean(String((runtime.el as HTMLInputElement).value ?? '').trim())
 }
 
 function collectRuntimeText(runtime: FieldRuntime): string {
@@ -116,46 +112,3 @@ export function buildTextFallbackValues(runtime: FieldRuntime, desired: string):
 
   return [fallback]
 }
-
-/** 统一填充入口：按 runtime kind 分发 */
-export async function fillOne(
-  runtime: FieldRuntime | undefined,
-  value: string | string[],
-  { overwrite = true, logger }: { overwrite?: boolean; logger?: (message: string) => void } = {}
-): Promise<FillResult> {
-  if (!runtime) return { filled: false, message: '字段不存在' }
-
-  if (runtime.kind === 'file') {
-    return { filled: false, message: '文件上传字段无法自动填写' }
-  }
-
-  if (runtime.kind === 'checkbox_group') {
-    const desired = Array.isArray(value) ? value : [value]
-    if (overwrite) {
-      return fillCheckboxGroup(runtime, desired)
-    }
-    // 增量模式：仅在尚无任何勾选时写入
-    if (hasExistingFieldValue(runtime)) return { filled: false, message: '字段已有内容，增量模式下不覆盖' }
-    return fillCheckboxGroup(runtime, desired)
-  }
-
-  if (runtime.kind === 'radio_group') {
-    return fillRadioGroup(runtime, value)
-  }
-
-  if (runtime.kind === 'select') {
-    return fillSelect(runtime, value)
-  }
-
-  if (runtime.kind === 'contenteditable') {
-    return fillContentEditable(runtime, value)
-  }
-
-  return fillTextLike(runtime, value, {
-    isDateLike: isReadonlyDateLikeRuntime(runtime),
-    fillDatePanel: (rt, desired) => fillReadonlyDateRuntime(rt, desired, logger ? { log: logger } : undefined),
-    buildFallbackValues: buildTextFallbackValues,
-  })
-}
-
-export type { FillMode }

@@ -47,6 +47,18 @@
         outline-offset: 4px;
       }
 
+      .card h2 {
+        margin: 0 0 4px;
+        font-size: 16px;
+      }
+
+      .card .hint {
+        margin: 0 0 16px;
+        font-size: 12px;
+        color: #6b7280;
+        font-weight: 400;
+      }
+
       .field {
         display: flex;
         flex-direction: column;
@@ -64,6 +76,7 @@
       }
 
       input,
+      select,
       textarea {
         width: 100%;
         padding: 12px 14px;
@@ -71,6 +84,7 @@
         border-radius: 12px;
         font-size: 15px;
         box-sizing: border-box;
+        background: white;
       }
 
       textarea {
@@ -82,10 +96,12 @@
   <body>
     <main class="page">
       <h1>本地联调表单</h1>
-      <p>左侧用于验证增量填入，右侧用于验证选区填入。</p>
+      <p>左列验证增量填入与五动作决策，右列验证选区填入。</p>
 
       <div class="grid">
         <section class="card" id="incremental-card">
+          <h2>增量模式</h2>
+          <p class="hint">已有姓名应被保留（增量不覆盖），空邮箱应被填入。</p>
           <div class="field">
             <label for="fullName">姓名</label>
             <input id="fullName" name="fullName" type="text" value="已有姓名" />
@@ -97,6 +113,8 @@
         </section>
 
         <section class="card selected-zone" id="selection-card">
+          <h2>选区模式</h2>
+          <p class="hint">框选本卡片后应只填入卡片内字段。</p>
           <div class="field">
             <label for="jobTitle">应聘岗位</label>
             <input id="jobTitle" name="jobTitle" type="text" />
@@ -106,7 +124,151 @@
             <textarea id="selfIntro" name="selfIntro"></textarea>
           </div>
         </section>
+
+        <section class="card" id="decision-card">
+          <h2>五动作决策（覆盖模式）</h2>
+          <p class="hint">
+            预填姓名与档案一致 → keep；预填错误邮箱 → correct 覆盖；身份证号 → manual 交人工；
+            学历下拉档案为「硕士」时应选中「硕士研究生」（选项归一化）。
+          </p>
+          <div class="field">
+            <label for="prefilledName">预填姓名</label>
+            <input id="prefilledName" name="prefilledName" type="text" value="张三" />
+          </div>
+          <div class="field">
+            <label for="prefilledEmail">预填错误邮箱</label>
+            <input id="prefilledEmail" name="prefilledEmail" type="email" value="wrong@example.com" />
+          </div>
+          <div class="field">
+            <label for="idNumber">身份证号</label>
+            <input id="idNumber" name="idNumber" type="text" value="110101199001011234" />
+          </div>
+          <div class="field">
+            <label for="degree">最高学历</label>
+            <select id="degree" name="degree">
+              <option value="">请选择</option>
+              <option value="associate">大专</option>
+              <option value="bachelor">大学本科</option>
+              <option value="master">硕士研究生</option>
+              <option value="phd">博士研究生</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="trainingMode">培养方式</label>
+            <select id="trainingMode" name="trainingMode">
+              <option value="">请选择</option>
+              <option value="fulltime">全日制</option>
+              <option value="parttime">非全日制</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card" id="checkbox-card">
+          <h2>多选与填后验证</h2>
+          <p class="hint">技能多选应按档案勾选；篡改 select 后填充应触发「验证失败」并自动重试。</p>
+          <div class="field">
+            <label>掌握技能</label>
+            <div>
+              <input type="checkbox" id="skill-en" name="skills" value="英语" />
+              <label for="skill-en" style="font-weight: 400">英语</label>
+            </div>
+            <div>
+              <input type="checkbox" id="skill-fr" name="skills" value="法语" />
+              <label for="skill-fr" style="font-weight: 400">法语</label>
+            </div>
+            <div>
+              <input type="checkbox" id="skill-de" name="skills" value="德语" />
+              <label for="skill-de" style="font-weight: 400">德语</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="gender">性别</label>
+            <div>
+              <input type="radio" id="gender-m" name="gender" value="男" />
+              <label for="gender-m" style="font-weight: 400">男</label>
+            </div>
+            <div>
+              <input type="radio" id="gender-f" name="gender" value="女" />
+              <label for="gender-f" style="font-weight: 400">女</label>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="custom-select-card">
+          <h2>自定义下拉（Ant Design 风格）</h2>
+          <p class="hint">
+            模拟 role=combobox 组件：点击展开选项（挂 body 的 portal）。档案「硕士」应选中「硕士研究生」；
+            城市应选中「北京」。选项标题含「研究院」用于检验匹配精度。
+          </p>
+          <div class="field">
+            <label for="cs-degree">最高学历（自定义组件）</label>
+            <div id="cs-degree" role="combobox" aria-expanded="false" tabindex="0" style="border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 14px; cursor: pointer;">请选择</div>
+          </div>
+          <div class="field">
+            <label for="cs-city">期望城市（自定义组件）</label>
+            <div id="cs-city" role="combobox" aria-expanded="false" tabindex="0" style="border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 14px; cursor: pointer;">请选择或搜索</div>
+          </div>
+        </section>
+        <section class="card" id="iframe-card">
+          <h2>同源 iframe 内表单</h2>
+          <p class="hint">嵌入 same-origin iframe 的字段应能被扫描并填充。</p>
+          <iframe id="embedded-form" src="iframe-inner.html" style="width: 100%; height: 150px; border: 1px solid #cbd5e1; border-radius: 12px;" title="iframe 表单"></iframe>
+        </section>
       </div>
     </main>
+
+    <script>
+      // 模拟 Ant Design Select：点击 combobox 展开 body 下的 [role=option] 下拉
+      function mountCustomSelect(id, options) {
+        const trigger = document.getElementById(id)
+        let dropdown = null
+
+        const close = () => {
+          if (dropdown) {
+            dropdown.remove()
+            dropdown = null
+          }
+          trigger.setAttribute('aria-expanded', 'false')
+        }
+
+        const open = () => {
+          close()
+          dropdown = document.createElement('div')
+          dropdown.setAttribute('role', 'listbox')
+          dropdown.style.cssText =
+            'position:absolute;z-index:9999;background:#fff;border:1px solid #d9d9d9;border-radius:8px;box-shadow:0 6px 16px rgba(0,0,0,.08);padding:4px 0;min-width:180px;'
+          const rect = trigger.getBoundingClientRect()
+          dropdown.style.left = rect.left + 'px'
+          dropdown.style.top = rect.bottom + 4 + 'px'
+
+          for (const label of options) {
+            const item = document.createElement('div')
+            item.setAttribute('role', 'option')
+            item.textContent = label
+            item.style.cssText = 'padding:8px 12px;cursor:pointer;'
+            item.addEventListener('mouseenter', () => (item.style.background = '#f5f5f5'))
+            item.addEventListener('mouseleave', () => (item.style.background = '#fff'))
+            item.addEventListener('click', () => {
+              trigger.textContent = label
+              close()
+            })
+            dropdown.appendChild(item)
+          }
+
+          document.body.appendChild(dropdown)
+          trigger.setAttribute('aria-expanded', 'true')
+        }
+
+        trigger.addEventListener('click', () => {
+          trigger.getAttribute('aria-expanded') === 'true' ? close() : open()
+        })
+        document.addEventListener('click', (event) => {
+          if (dropdown && !dropdown.contains(event.target) && event.target !== trigger) close()
+        })
+      }
+
+      mountCustomSelect('cs-degree', ['大专', '大学本科', '硕士研究生', '博士研究生', '中国科学院大学研究院'])
+      mountCustomSelect('cs-city', ['北京', '上海', '广州', '深圳'])
+    </script>
   </body>
 </html>

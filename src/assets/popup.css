@@ -823,3 +823,309 @@ body {
   gap: 6px;
   padding-bottom: 1px;
 }
+
+/* 停止填充按钮（填充进行中替换缓存清理按钮） */
+
+.op-btn-stop {
+  color: var(--op-danger);
+  border-color: color-mix(in srgb, var(--op-danger) 45%, transparent);
+}
+
+.op-btn-stop:hover:not(:disabled) {
+  background: var(--op-danger-soft);
+  border-color: var(--op-danger);
+}
+
+/* 映射纠错 */
+
+.op-mapping-fix {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-mapping-fix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  padding: 10px;
+}
+
+.op-mapping-fix-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.op-mapping-fix-field {
+  flex-shrink: 0;
+  max-width: 120px;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-mapping-fix-row select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+/* 决策徽标（映射纠错 / 填充报告共用） */
+
+.op-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.op-badge-info {
+  background: var(--op-accent-soft);
+  color: var(--op-accent);
+}
+
+.op-badge-ok {
+  background: var(--op-success-soft);
+  color: var(--op-success);
+}
+
+.op-badge-warn {
+  background: var(--op-warning-soft);
+  color: var(--op-warning);
+}
+
+.op-badge-danger {
+  background: var(--op-danger-soft);
+  color: var(--op-danger);
+}
+
+.op-badge-muted {
+  background: var(--op-bg-hover);
+  color: var(--op-text-3);
+}
+
+/* 映射纠错：决策头行与理由 */
+
+.op-mapping-fix-row {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.op-mapping-fix-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-mapping-fix-reason {
+  font-size: 11px;
+  color: var(--op-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-mapping-fix-edit {
+  display: flex;
+  gap: 6px;
+}
+
+.op-mapping-fix-edit select {
+  flex: 1;
+  min-width: 0;
+}
+
+.op-ctrl-select-action {
+  flex: 0 0 92px !important;
+}
+
+/* 填充报告 */
+
+.op-fill-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-fill-report-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.op-fill-report-counts {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--op-text-3);
+}
+
+.op-fill-report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  padding: 10px;
+}
+
+.op-fill-report-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-fill-report-field {
+  flex-shrink: 0;
+  max-width: 110px;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-fill-report-message {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--op-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 缓存管理 */
+
+.op-cache-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-cache-manager-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-cache-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  padding: 10px;
+}
+
+.op-cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.op-cache-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.op-cache-host {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-cache-meta {
+  font-size: 11px;
+  color: var(--op-text-3);
+}
+
+.op-btn-xs {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* 填充实时进度 */
+
+.op-fill-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-fill-progress-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.op-fill-progress-counts {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--op-text-3);
+}
+
+.op-fill-progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--op-bg-inset);
+  overflow: hidden;
+}
+
+.op-fill-progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--op-accent-grad);
+  transition: width 180ms ease-out;
+}
+
+.op-fill-progress-current {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-fill-progress-field {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-fill-progress-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 170px;
+  overflow-y: auto;
+}

@@ -5,7 +5,11 @@
 import { useCallback, useState } from 'react'
 
 import GearIcon from '@/assets/icons/gear.svg'
+import { CacheManager } from '@/features/fill-flow/CacheManager'
 import { FillPanel } from '@/features/fill-flow/FillPanel'
+import { FillProgressPanel } from '@/features/fill-flow/FillProgressPanel'
+import { FillReportPanel } from '@/features/fill-flow/FillReportPanel'
+import { MappingCorrection } from '@/features/fill-flow/MappingCorrection'
 import { useFillFlow } from '@/features/fill-flow/useFillFlow'
 import type { FillActionKey } from '@/features/fill-flow/useFillFlow'
 import { ResumeSummaryGrid } from '@/features/resume-editor/ResumeSummaryGrid'
@@ -15,8 +19,8 @@ import { SettingsModal } from '@/features/model-settings/SettingsModal'
 import { useModels } from '@/features/model-settings/useModels'
 import { LogViewer } from '@/features/run-logs/LogViewer'
 import { useLogExport } from '@/features/run-logs/useLogExport'
-import { useRunLog } from '@/features/run-logs/useRunLog'
-import type { FillStats } from '@/features/run-logs/useRunLog'
+import { useFillEvents } from '@/features/run-logs/useFillEvents'
+import type { FillStats } from '@/features/run-logs/useFillEvents'
 import { openResumeEditorPage } from '@/lib/tabs'
 import { hasAnyFilledField } from '@/resume/schema'
 
@@ -38,31 +42,31 @@ export function SidepanelApp() {
     setStatus({ type, text })
   }, [])
 
-  const runLog = useRunLog({
+  const fillEvents = useFillEvents({
     onStats: setStats,
     onError: (message) => {
       updateStatus('error', '错误')
-      runLog.addLog('error', message)
+      fillEvents.addLog('error', message)
     },
   })
-  const logExport = useLogExport(runLog.addLog)
+  const logExport = useLogExport(fillEvents.addLog)
 
   const handleSessionEnd = useCallback(
     async (result: { status: string; stats?: Partial<FillStats>; errorMessage?: string }) => {
-      const session = await runLog.finalizeFillSession(result)
+      const session = await fillEvents.finalizeFillSession(result)
       if (session) {
         await logExport.exportSession(session)
       }
     },
-    [logExport, runLog]
+    [logExport, fillEvents]
   )
 
   const fillFlow = useFillFlow({
     resumeProfile: resumeApi.profile,
-    onLog: runLog.addLog,
+    onLog: fillEvents.addLog,
     onStats: setStats,
     onStatus: updateStatus,
-    onSessionBegin: runLog.beginFillSession,
+    onSessionBegin: fillEvents.beginFillSession,
     onSessionEnd: handleSessionEnd,
     onRequireResume: () => setActiveTab('resume'),
     onRequireSettings: () => setSettingsOpen(true),
@@ -113,15 +117,27 @@ export function SidepanelApp() {
         </div>
 
         {activeTab === 'fill' ? (
-          <FillPanel
-            stats={stats}
-            hasResumeData={hasResumeData}
-            isFilling={fillFlow.isFilling}
-            runningAction={fillFlow.runningAction}
-            fillTip={fillFlow.fillTip}
-            onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
-            onClearCache={() => void fillFlow.clearMappingCache()}
-          />
+          <>
+            <FillPanel
+              stats={stats}
+              hasResumeData={hasResumeData}
+              isFilling={fillFlow.isFilling}
+              runningAction={fillFlow.runningAction}
+              fillTip={fillFlow.fillTip}
+              onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
+              onClearCache={() => void fillFlow.clearMappingCache()}
+              onCancel={() => void fillFlow.cancelFill()}
+            />
+            {fillFlow.isFilling ? (
+              <FillProgressPanel progress={fillEvents.progress} />
+            ) : (
+              <>
+                <FillReportPanel report={fillFlow.fieldReport} />
+                <MappingCorrection onLog={fillEvents.addLog} refreshKey={stats.filledCount + stats.mappedCount} />
+                <CacheManager onLog={fillEvents.addLog} />
+              </>
+            )}
+          </>
         ) : (
           <section className="op-panel active">
             <div className="op-section">
@@ -159,8 +175,8 @@ export function SidepanelApp() {
         )}
 
         <LogViewer
-          logs={runLog.logs}
-          onClear={runLog.clearLogs}
+          logs={fillEvents.logs}
+          onClear={fillEvents.clearLogs}
           exportState={logExport.state}
           selecting={logExport.selecting}
           onSelectDirectory={() => void logExport.selectDirectory()}
@@ -171,7 +187,7 @@ export function SidepanelApp() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         modelsApi={modelsApi}
-        onLog={runLog.addLog}
+        onLog={fillEvents.addLog}
       />
     </div>
   )

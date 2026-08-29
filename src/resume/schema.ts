@@ -164,6 +164,12 @@ export const SECTION_DEFINITIONS: ResumeSectionDef[] = [
         options: ['', '高中', '大专', '本科', '硕士', 'MBA', '博士', '其他'],
       },
       {
+        key: 'isFreshGraduate',
+        label: '是否应届',
+        input: 'select',
+        options: ['', '是', '否'],
+      },
+      {
         key: 'summary',
         label: '个人简介',
         input: 'textarea',
@@ -514,6 +520,7 @@ export const SECTION_DEFINITIONS: ResumeSectionDef[] = [
 const FIELD_VALUE_ALIASES: Record<string, Record<string, string[]>> = {
   personal: {
     birthDate: ['birthday', 'birth', 'dob', 'birthMonth', 'birthYearMonth', '出生年月'],
+    isFreshGraduate: ['freshGraduate', 'isFresh', '应届生', '应届毕业生', '是否应届生'],
   },
   contactAndLocation: {
     hometownCity: ['hometown', 'nativePlace', 'birthPlace', '籍贯'],
@@ -851,6 +858,54 @@ function extractBirthDateFromPersonalId(idNumber: string): string {
   return ''
 }
 
+// ---------------------------------------------------------------------------
+// 填充时派生值：LLM 只规划映射，计算在代码里确定性完成（反幻觉）
+// ---------------------------------------------------------------------------
+
+/** 解析归一化日期（YYYY-MM-DD / YYYY-MM / YYYY）为年月日 */
+function parseNormalizedDateParts(value: unknown): { year: number; month: number; day: number } | null {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?$/)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = match[2] ? Number(match[2]) : 1
+  const day = match[3] ? Number(match[3]) : 1
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null
+  return { year, month, day }
+}
+
+/** 周岁：当年纪念日未到则减一。非法/超界生日返回空串 */
+export function computeAgeFromBirthDate(birthDate: unknown, now: Date): string {
+  const birth = parseNormalizedDateParts(birthDate)
+  if (!birth) return ''
+
+  let age = now.getFullYear() - birth.year
+  const currentMonth = now.getMonth() + 1
+  if (currentMonth < birth.month || (currentMonth === birth.month && now.getDate() < birth.day)) {
+    age -= 1
+  }
+
+  return age >= 0 && age <= 100 ? String(age) : ''
+}
+
+/** 应届判定：最近毕业时间距今 24 个月内（含在读未毕业）视为应届 */
+export function computeIsFreshGraduate(educationEndDates: unknown[], now: Date): '是' | '否' | '' {
+  const dates = educationEndDates
+    .map((item) => parseNormalizedDateParts(item))
+    .filter((item): item is { year: number; month: number; day: number } => Boolean(item))
+  if (dates.length === 0) return ''
+
+  const latest = dates.reduce((acc, item) =>
+    item.year > acc.year || (item.year === acc.year && item.month > acc.month) ? item : acc,
+  )
+
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 24, 1)
+  const latestDate = new Date(latest.year, latest.month - 1, 1)
+  return latestDate >= cutoff ? '是' : '否'
+}
+
 function applyDerivedProfileValues(profile: ResumeProfile): void {
   const identity = getGroupSection(profile, 'identityAndAuthorization')
   const personal = getGroupSection(profile, 'personal')
@@ -862,6 +917,19 @@ function applyDerivedProfileValues(profile: ResumeProfile): void {
   if (!identity.personalIdType && identity.personalIdNumber) {
     identity.personalIdType = '身份证'
   }
+
+  // age/isFreshGraduate 每次归一化都重算（覆盖语义）：落盘后不会过期，
+  // 生日/毕业时间才是真源，手填的派生值以真源推导为准。
+  if (personal.birthDate) {
+    const derivedAge = computeAgeFromBirthDate(personal.birthDate, new Date())
+    if (derivedAge) personal.age = derivedAge
+  }
+
+  const educationEndDates = Array.isArray(profile.educations)
+    ? profile.educations.map((item) => item?.endDate)
+    : []
+  const derivedFresh = computeIsFreshGraduate(educationEndDates, new Date())
+  if (derivedFresh) personal.isFreshGraduate = derivedFresh
 }
 
 export function normalizeResumeProfile(input: unknown): ResumeProfile {

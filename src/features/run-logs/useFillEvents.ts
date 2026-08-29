@@ -1,12 +1,23 @@
 /**
- * 运行日志 hook：接收 content script 的 log/updateStats/error 通知，
- * 同时维护 FillSession 记录（供目录自动导出）。
+ * 填充事件订阅状态机：isFillEvent 守卫订阅 content script 推送的 FillEvent 流，
+ * 内聚派生状态——日志流 / 统计 / 实时进度（phase + 字段级）/ 会话记录（导出用）。
+ * UI 只消费派生状态，不感知消息形状。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { FillEvent } from '@/messaging/events'
+import { isFillEvent } from '@/messaging/events'
 import { shouldRenderLogInUi } from '@/logs/visibility'
 import type { FillSession } from '@/logs/export'
+import {
+  INITIAL_FIELD_PROGRESS,
+  reduceFieldProgress,
+} from '@/features/fill-flow/FillProgressPanel'
+import type { FieldProgressState } from '@/features/fill-flow/FillProgressPanel'
+
+/** 侧栏 UI 最多保留的日志条数（会话导出记录不受限） */
+const MAX_UI_LOGS = 500
 
 export interface LogItem {
   id: number
@@ -29,13 +40,14 @@ function formatLogTime(): string {
   })
 }
 
-interface UseRunLogOptions {
+interface UseFillEventsOptions {
   onStats?: (stats: FillStats) => void
   onError?: (message: string) => void
 }
 
-export function useRunLog({ onStats, onError }: UseRunLogOptions = {}) {
+export function useFillEvents({ onStats, onError }: UseFillEventsOptions = {}) {
   const [logs, setLogs] = useState<LogItem[]>([])
+  const [progress, setProgress] = useState<FieldProgressState>(INITIAL_FIELD_PROGRESS)
   const logSeqRef = useRef(0)
   const sessionRef = useRef<FillSession | null>(null)
   const onStatsRef = useRef(onStats)
@@ -50,7 +62,11 @@ export function useRunLog({ onStats, onError }: UseRunLogOptions = {}) {
     const id = logSeqRef.current
 
     if (shouldRenderLogInUi(level, message)) {
-      setLogs((prev) => [...prev, { id, level, message, time: formatLogTime() }])
+      setLogs((prev) => {
+        const next = [...prev, { id, level, message, time: formatLogTime() }]
+        // 长会话防 DOM 无限膨胀：只保留最近 MAX_UI_LOGS 条
+        return next.length > MAX_UI_LOGS ? next.slice(next.length - MAX_UI_LOGS) : next
+      })
     }
 
     if (sessionRef.current) {
@@ -61,22 +77,6 @@ export function useRunLog({ onStats, onError }: UseRunLogOptions = {}) {
       })
     }
   }, [])
-
-  const updateStats = useCallback((stats: FillStats) => {
-    onStatsRef.current?.(stats)
-    if (sessionRef.current) {
-      sessionRef.current.stats = {
-        fieldCount: Number(stats.fieldCount || 0),
-        mappedCount: Number(stats.mappedCount || 0),
-        filledCount: Number(stats.filledCount || 0),
-      }
-    }
-  }, [])
-
-  const clearLogs = useCallback(() => {
-    setLogs([])
-    addLog('info', '日志已清空')
-  }, [addLog])
 
   const beginFillSession = useCallback((tab: { id: number | null; url: string; title: string }) => {
     sessionRef.current = {
@@ -97,6 +97,7 @@ export function useRunLog({ onStats, onError }: UseRunLogOptions = {}) {
       },
       logs: [],
     }
+    setProgress(INITIAL_FIELD_PROGRESS)
   }, [])
 
   const finalizeFillSession = useCallback(
@@ -125,46 +126,54 @@ export function useRunLog({ onStats, onError }: UseRunLogOptions = {}) {
     []
   )
 
+  const clearLogs = useCallback(() => {
+    setLogs([])
+    addLog('info', '日志已清空')
+  }, [addLog])
+
   useEffect(() => {
-    const listener = (
-      message: {
-        type?: string
-        level?: string
-        text?: string
-        fieldCount?: number
-        mappedCount?: number
-        filledCount?: number
-      }
-    ) => {
-      switch (message.type) {
+    const listener = (message: unknown) => {
+      if (!isFillEvent(message)) return
+      const event = message as FillEvent
+
+      switch (event.type) {
         case 'log':
-          addLog(message.level || 'info', message.text || '')
-          break
-        case 'updateStats':
-          updateStats({
-            fieldCount: message.fieldCount ?? 0,
-            mappedCount: message.mappedCount ?? 0,
-            filledCount: message.filledCount ?? 0,
-          } as FillStats)
+          addLog(event.level, event.text)
           break
         case 'error':
-          onErrorRef.current?.(message.text || '未知错误')
-          addLog('error', message.text || '未知错误')
+          onErrorRef.current?.(event.text || '未知错误')
+          addLog('error', event.text || '未知错误')
           break
-        default:
+        case 'stats': {
+          const stats: FillStats = {
+            fieldCount: event.fieldCount ?? 0,
+            mappedCount: event.mappedCount ?? 0,
+            filledCount: event.filledCount ?? 0,
+          }
+          onStatsRef.current?.(stats)
+          if (sessionRef.current) {
+            sessionRef.current.stats = stats
+          }
+          break
+        }
+        case 'phase':
+          setProgress((prev) => reduceFieldProgress(prev, event))
+          break
+        case 'fieldProgress':
+          setProgress((prev) => reduceFieldProgress(prev, event))
           break
       }
     }
 
     chrome.runtime.onMessage.addListener(listener)
     return () => chrome.runtime.onMessage.removeListener(listener)
-  }, [addLog, updateStats])
+  }, [addLog])
 
   return {
     logs,
     addLog,
     clearLogs,
-    updateStats,
+    progress,
     beginFillSession,
     finalizeFillSession,
   }

@@ -18,6 +18,7 @@ export interface FillFieldLike {
 }
 
 export interface FillMappingLike {
+  action?: string
   resumePath?: string
   reason?: string
   transform?: unknown
@@ -136,6 +137,7 @@ export function formatMappingSummary(
   return [
     `[映射:${compactText(source) || 'ai'}]`,
     compactText(field?.fieldId) || '(no-field-id)',
+    `action=${compactText(mapping?.action) || 'fill'}`,
     `${summarizeValue(field?.label)} -> ${compactText(mapping?.resumePath) || '(unmapped)'}`,
     `transform=${formatTransform(mapping?.transform)}`,
     `reason=${summarizeValue(mapping?.reason, { maxLength: 120 })}`,
@@ -185,15 +187,16 @@ export function formatFillSummary({
   mapping: FillMappingLike
   rawValue: unknown
   finalValue: unknown
-  fillResult: { filled?: boolean; message?: string }
+  fillResult: { filled?: boolean; message?: string; verified?: boolean }
 }): string {
   const status = fillResult?.filled ? '成功' : '失败'
+  const verifiedTag = fillResult?.filled && fillResult?.verified ? ' verified=read-back' : ''
   return [
     `[填充:${status}]`,
     compactText(field?.fieldId) || '(no-field-id)',
     `${summarizeValue(field?.label)} -> ${compactText(mapping?.resumePath) || '(unmapped)'}`,
     `raw=${summarizeLoggedValue(rawValue, field, mapping)}`,
     `final=${summarizeLoggedValue(finalValue, field, mapping)}`,
-    `detail=${summarizeValue(fillResult?.message)}`,
+    `detail=${summarizeValue(fillResult?.message)}${verifiedTag}`,
   ].join(' ')
 }

@@ -72,7 +72,7 @@ describe('callAI', () => {
       createResponse(200, { choices: [{ message: { content: '{}' } }] }),
     ])
 
-    const result = await callAI('m', 'prompt', 'field_mapping', deps)
+    const result = await callAI('m', 'prompt', 'form_planning', deps)
 
     expect(result).toBe('{}')
   })
@@ -83,7 +83,7 @@ describe('callAI', () => {
       createResponse(200, { choices: [{ message: { content: '{}' } }] }),
     ])
 
-    await expect(callAI('m', 'prompt', 'field_mapping', deps)).resolves.toBe('{}')
+    await expect(callAI('m', 'prompt', 'form_planning', deps)).resolves.toBe('{}')
   })
 
   it('falls back without response_format when provider rejects it', async () => {

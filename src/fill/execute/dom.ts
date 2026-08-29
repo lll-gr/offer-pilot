@@ -6,7 +6,7 @@
 import type { FieldRuntime, FillResult } from '../types'
 import { matchesWrittenValue, normalizeValueForRuntime } from './runtime'
 import { pickBestOption } from './match'
-import { hasMeaningfulFillValue, normalizeCheckboxCandidates, prepareTextValueForRuntime } from './values'
+import { hasMeaningfulFillValue, isLongTextSimilarEnough, normalizeCheckboxCandidates, prepareTextValueForRuntime } from './values'
 import { matchesAnyCandidate } from './match'
 
 function sleep(ms: number): Promise<void> {
@@ -42,6 +42,20 @@ function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: 
   element.value = value
 }
 
+const CJK_PATTERN = /[\u4e00-\u9fff\u3400-\u4dbf]/
+
+/**
+ * 中文 IME 组合事件：部分 React/Vue 受控组件只认 composition 事件链才接受中文值，
+ * 只发 input/change 会静默丢值。Node 测试环境无 CompositionEvent，降级为 Event
+ * （EventInit 忽略未知属性，data 字段在降级时丢失，浏览器路径不受影响）。
+ */
+function dispatchCompositionEvents(el: HTMLElement, value: string): void {
+  if (!CJK_PATTERN.test(value)) return
+  const Ctor = typeof CompositionEvent === 'function' ? CompositionEvent : Event
+  el.dispatchEvent(new Ctor('compositionstart', { bubbles: true } as CompositionEventInit))
+  el.dispatchEvent(new Ctor('compositionend', { bubbles: true, data: value } as CompositionEventInit))
+}
+
 export async function setValueWithEvents(
   el: HTMLInputElement | HTMLTextAreaElement,
   value: string,
@@ -67,6 +81,7 @@ export async function setValueWithEvents(
     setNativeValue(el, value)
     el.setAttribute('value', value)
     el.dispatchEvent(new Event('input', { bubbles: true }))
+    dispatchCompositionEvents(el, value)
     el.dispatchEvent(new Event('change', { bubbles: true }))
     el.blur?.()
     await sleep(30)
@@ -193,7 +208,7 @@ export async function fillContentEditable(runtime: FieldRuntime, value: string |
   return { filled: true }
 }
 
-/** text/textarea：直接写入 → 只读日期走面板 → 薪资数值回退 */
+/** text/textarea：直接写入 → 只读日期走面板 → 薪资数值回退 → 长文本相似度兜底 */
 export async function fillTextLike(
   runtime: FieldRuntime,
   value: string | string[],
@@ -223,14 +238,19 @@ export async function fillTextLike(
   const el = runtime.el as HTMLInputElement
   const ok = await setValueWithEvents(el, normalized, runtime)
   if (ok) {
-    return { filled: true }
+    return { filled: true, verified: true }
   }
 
   for (const fallbackValue of buildFallbackValues(runtime, normalized)) {
     const fallbackOk = await setValueWithEvents(el, fallbackValue, runtime)
     if (fallbackOk) {
-      return { filled: true, message: `已回退为兼容值 ${fallbackValue}` }
+      return { filled: true, message: `已回退为兼容值 ${fallbackValue}`, verified: true }
     }
+  }
+
+  // 长文本（自我介绍等）被框架规范化空白后精确比对失败：相似度足够视为已填（未验证）
+  if (isLongTextSimilarEnough(String(el?.value ?? ''), normalized)) {
+    return { filled: true, message: '已写入内容与期望相似（框架规范化了空白），未做精确验证' }
   }
 
   return { filled: false, message: '写入失败' }

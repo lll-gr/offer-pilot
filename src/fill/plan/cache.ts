@@ -1,12 +1,14 @@
 /**
- * 字段映射缓存：以页面 URL + 字段签名为 key（LRU 上限 50 条）。
- * 签名剔除易变信息（占位提示、已填值），同页面字段集不变即命中，
- * 跳过 AI 调用。存储于 chrome.storage.local。
+ * 填充计划缓存：以页面 URL + 字段签名为 key（LRU 上限 50 条）。
+ * 存 FieldDecision（映射 + 五动作决策快照），重放= 对齐后的决策直接执行。
+ * 旧版条目（mappings 无 action）读取时适配为 decisions，action 一律回退 fill。
+ * 签名剔除易变信息（占位提示、已填值），同页面字段集不变即命中，跳过 AI 调用。
  */
 
 import { MAPPING_CACHE_KEY } from '@/messaging/bridge'
 import { normalizeFieldText } from '../scanner/field-text'
-import type { FieldDescriptor, FieldMapping } from '../types'
+import type { FieldAction, FieldConfidence, FieldDecision, FieldDescriptor, Transform } from '../types'
+import { FIELD_ACTIONS, FIELD_CONFIDENCES } from './payload'
 
 const MAX_CACHE_ENTRIES = 50
 
@@ -26,7 +28,7 @@ export interface CacheFieldSignature {
 
 export interface MappingCacheEntry {
   updatedAt: number
-  mappings: FieldMapping[]
+  decisions: FieldDecision[]
   host: string
   path: string
   signature: CacheFieldSignature[]
@@ -118,12 +120,210 @@ export function createMappingCacheSignature(fields: FieldDescriptor[]): CacheFie
   return fields.map((field, index) => createStableCacheFieldSignature(field, index))
 }
 
+/**
+ * 位置无关的哈希原料：排序消除字段顺序/插入位移影响。
+ * 重复字段（如起止时间对）靠 label 重复出现本身区分，不依赖 index。
+ */
+function serializeSignatureStable(signature: CacheFieldSignature[]): string {
+  const parts = signature
+    .map((field) =>
+      [
+        field.kind,
+        field.inputType,
+        field.required ? '1' : '0',
+        field.sectionKey,
+        field.sectionLabel,
+        field.label,
+        field.placeholder,
+        field.name,
+        field.id,
+        field.options.join('|'),
+      ].join('\u0001'),
+    )
+    .sort()
+  return parts.join('\u0002')
+}
+
 export function createMappingCacheKeyFromSignature(
   signature: CacheFieldSignature[],
   location: { origin: string; pathname: string; host: string }
 ): string {
-  const base = `${location.origin}${location.pathname}::${JSON.stringify(signature)}`
+  const base = `${location.origin}${location.pathname}::${serializeSignatureStable(signature)}`
   return `${location.host}:${hashString(base)}`
+}
+
+/**
+ * 单字段指纹：缓存决策条目的对齐键。
+ * 由扫描稳定属性组成，与扫描序号（fieldId）无关——同一表单重复扫描时指纹不变，
+ * 字段增删/位移导致序号漂移时仍能对上。
+ */
+export function createFieldKey(field: {
+  kind: string
+  label?: string
+  name?: string
+  id?: string
+  inputType?: string
+  options?: string[]
+}): string {
+  return [
+    field.kind,
+    field.inputType || '',
+    normalizeCacheText(field.label || ''),
+    normalizeCacheText(field.name || ''),
+    normalizeCacheText(field.id || ''),
+    (field.options || []).map((item) => normalizeCacheText(item)).filter(Boolean).slice(0, 8).join('|'),
+  ].join('\u0001')
+}
+
+function toValidAction(value: unknown): FieldAction {
+  const text = String(value || '').trim()
+  return (FIELD_ACTIONS as string[]).includes(text) ? (text as FieldAction) : 'fill'
+}
+
+function toValidConfidence(value: unknown): FieldConfidence {
+  const text = String(value || '').trim()
+  return (FIELD_CONFIDENCES as string[]).includes(text) ? (text as FieldConfidence) : 'medium'
+}
+
+/**
+ * 缓存重放对齐：把带 fieldKey 的缓存决策条目安到当前扫描字段上。
+ * 按指纹匹配（序号无关）；无指纹的条目直接丢弃（不背旧格式兼容）。
+ * 未匹配到的决策直接丢弃（宁可不填不错填）。
+ */
+export function alignCachedDecisions(
+  cachedDecisions: Array<{
+    fieldId?: string
+    action?: string
+    confidence?: string
+    fieldKey?: string
+    resumePath?: string
+    reason?: string
+    transform?: unknown
+  }>,
+  currentFields: Array<{
+    fieldId: string
+    kind: string
+    label?: string
+    name?: string
+    id?: string
+    inputType?: string
+    options?: string[]
+  }>
+): FieldDecision[] {
+  // 指纹 → 候选字段 id 队列（同指纹多字段如起止时间对，按出现顺序消费）
+  const candidatesByKey = new Map<string, string[]>()
+  for (const field of currentFields) {
+    const key = createFieldKey(field)
+    const queue = candidatesByKey.get(key) || []
+    queue.push(field.fieldId)
+    candidatesByKey.set(key, queue)
+  }
+
+  const out: FieldDecision[] = []
+  const consumedFieldIds = new Set<string>()
+
+  const takeCandidate = (key: string): string | undefined => {
+    const queue = candidatesByKey.get(key)
+    if (!queue) return undefined
+    while (queue.length > 0) {
+      const candidate = queue.shift()
+      if (candidate && !consumedFieldIds.has(candidate)) return candidate
+    }
+    return undefined
+  }
+
+  for (const decision of cachedDecisions) {
+    if (!decision.fieldKey) continue
+    const targetFieldId = takeCandidate(decision.fieldKey)
+
+    if (!targetFieldId) continue
+
+    consumedFieldIds.add(targetFieldId)
+    out.push({
+      fieldId: targetFieldId,
+      action: toValidAction(decision.action),
+      resumePath: String(decision.resumePath || ''),
+      reason: String(decision.reason || ''),
+      transform: (decision.transform ?? { type: 'none' }) as Transform,
+      confidence: toValidConfidence(decision.confidence),
+      fieldKey: decision.fieldKey,
+    })
+  }
+
+  return out
+}
+
+/**
+ * 纠错写回：把用户修正的决策按指纹更新进缓存条目（纯函数，可测）。
+ * 修正同时落 resumePath 与 action，下次重放连同动作一起生效。
+ */
+export function applyDecisionCorrection(
+  entry: MappingCacheEntry,
+  correction: { fieldKey: string; fieldId: string; resumePath: string; action?: FieldAction }
+): MappingCacheEntry {
+  const corrected = entry.decisions.map((item) =>
+    item.fieldKey === correction.fieldKey
+      ? {
+          ...item,
+          resumePath: correction.resumePath,
+          action: correction.action ?? item.action,
+          reason: '用户手动修正',
+        }
+      : item,
+  )
+  return { ...entry, decisions: corrected, updatedAt: Date.now() }
+}
+
+/** 旧版条目（mappings 无 action）读取时适配为 decisions，action 一律回退 fill */
+export function adaptLegacyCacheEntry(raw: unknown): MappingCacheEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const record = raw as {
+    updatedAt?: unknown
+    decisions?: unknown
+    mappings?: unknown
+    host?: unknown
+    path?: unknown
+    signature?: unknown
+  }
+
+  if (Array.isArray(record.decisions)) {
+    const decisions = record.decisions.map((item) => {
+      const decision = item as Partial<FieldDecision>
+      return {
+        fieldId: String(decision.fieldId || ''),
+        action: toValidAction(decision.action),
+        resumePath: String(decision.resumePath || ''),
+        reason: String(decision.reason || ''),
+        transform: (decision.transform ?? { type: 'none' }) as Transform,
+        confidence: toValidConfidence(decision.confidence),
+        fieldKey: decision.fieldKey ? String(decision.fieldKey) : undefined,
+      }
+    })
+    return { ...record, decisions } as MappingCacheEntry
+  }
+
+  const legacyMappings = Array.isArray(record.mappings) ? record.mappings : []
+  const decisions: FieldDecision[] = legacyMappings.map((item) => {
+    const mapping = item as {
+      fieldId?: unknown
+      resumePath?: unknown
+      reason?: unknown
+      transform?: unknown
+      fieldKey?: unknown
+    }
+    return {
+      fieldId: String(mapping.fieldId || ''),
+      action: 'fill' as const,
+      resumePath: String(mapping.resumePath || ''),
+      reason: String(mapping.reason || ''),
+      transform: (mapping.transform ?? { type: 'none' }) as Transform,
+      confidence: 'medium' as const,
+      fieldKey: mapping.fieldKey ? String(mapping.fieldKey) : undefined,
+    }
+  })
+
+  const { mappings: _mappings, ...rest } = record
+  return { ...rest, decisions } as MappingCacheEntry
 }
 
 // ---------------------------------------------------------------------------
@@ -199,16 +399,17 @@ export function summarizeCacheSignatureDifference(
 
 /** 纯函数形式的缓存查询描述（不触 storage），便于测试与日志 */
 export function describeMappingCacheLookup(
-  cache: Record<string, MappingCacheEntry> | null | undefined,
+  cache: Record<string, unknown> | null | undefined,
   cacheKey: string,
   meta: CacheLookupMeta
 ): CacheLookupResult {
   const normalizedCache = cache && typeof cache === 'object' ? cache : {}
   const keys = Object.keys(normalizedCache)
-  const entry = normalizedCache[cacheKey] || null
+  const rawEntry = normalizedCache[cacheKey] || null
+  const entry = adaptLegacyCacheEntry(rawEntry)
   const shortKey = String(cacheKey || '').split(':').pop() || '(empty)'
 
-  if (entry) {
+  if (rawEntry) {
     return {
       entry,
       hit: true,
@@ -225,8 +426,11 @@ export function describeMappingCacheLookup(
   }
 
   const samePageEntries = Object.entries(normalizedCache)
-    .filter(([, item]) => item?.host === meta.host && item?.path === meta.path)
-    .sort((left, right) => Number(right[1]?.updatedAt || 0) - Number(left[1]?.updatedAt || 0))
+    .filter(([, item]) => {
+      const legacy = item as { host?: unknown; path?: unknown }
+      return legacy?.host === meta.host && legacy?.path === meta.path
+    })
+    .sort((left, right) => Number((right[1] as { updatedAt?: unknown })?.updatedAt || 0) - Number((left[1] as { updatedAt?: unknown })?.updatedAt || 0))
 
   if (samePageEntries.length === 0) {
     return {
@@ -236,7 +440,7 @@ export function describeMappingCacheLookup(
     }
   }
 
-  const latestSamePage = samePageEntries[0]?.[1] || null
+  const latestSamePage = adaptLegacyCacheEntry(samePageEntries[0]?.[1])
   const difference = summarizeCacheSignatureDifference(meta.signature, latestSamePage?.signature)
 
   return {

@@ -67,8 +67,19 @@ export function detectFormSegments(
   return segments
 }
 
-const NEXT_STEP_PATTERN = /(下一步|下一页|保存|提交|确认|继续|保存并|保存并下一步|进入下一步)/
+/** 推进语义：可由扩展代为点击（多步流程进入下一页） */
+const ADVANCE_PATTERN = /(下一步|下一页|继续|进入下一步)/
+/** 提交语义：只能出现在 AI 咨询候选里，扩展永不代点（项目红线：不自动提交） */
+const SUBMIT_PATTERN = /(提交|保存|确认|保存并下一步)/
+const NEXT_STEP_PATTERN = new RegExp(`${ADVANCE_PATTERN.source}|${SUBMIT_PATTERN.source}`)
 const EXCLUDE_PATTERN = /(取消|上一步|返回|重置|清空|删除)/
+
+export interface NextStepCandidate {
+  text: string
+  el: Element
+  /** submit = 提交/保存类按钮（永不自动点击，仅作 AI 咨询候选） */
+  semantic: 'advance' | 'submit'
+}
 
 /** 全页（或指定容器）可见的「下一步/提交」类按钮候选（排除取消/上一步等） */
 export function findNextStepCandidates(root?: ParentNode | null): NextStepCandidate[] {
@@ -87,7 +98,8 @@ export function findNextStepCandidates(root?: ParentNode | null): NextStepCandid
     if (EXCLUDE_PATTERN.test(text)) continue
     if (!isVisible(el)) continue
     if ((el as HTMLButtonElement).disabled) continue
-    out.push({ text, el })
+    const semantic: NextStepCandidate['semantic'] = ADVANCE_PATTERN.test(text) ? 'advance' : 'submit'
+    out.push({ text, el, semantic })
   }
   return out
 }
@@ -95,6 +107,8 @@ export function findNextStepCandidates(root?: ParentNode | null): NextStepCandid
 export interface WaitForSegmentChangeOptions {
   timeoutMs?: number
   pollMs?: number
+  /** 用户取消：感知后立即返回 false（不视为翻页） */
+  signal?: AbortSignal
 }
 
 /**
@@ -103,13 +117,14 @@ export interface WaitForSegmentChangeOptions {
  */
 export async function waitForSegmentChange(
   fieldEls: Element[],
-  { timeoutMs = 15000, pollMs = 400 }: WaitForSegmentChangeOptions = {}
+  { timeoutMs = 15000, pollMs = 400, signal }: WaitForSegmentChangeOptions = {}
 ): Promise<boolean> {
   if (fieldEls.length === 0) return false
 
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
+    if (signal?.aborted) return false
     const anyDetached = fieldEls.some((el) => !el.isConnected)
     if (anyDetached) return true
     await new Promise((resolve) => setTimeout(resolve, pollMs))

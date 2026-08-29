@@ -96,7 +96,7 @@ src/
 ### 如何扩展
 
 - **新增简历字段**：`src/resume/schema.ts` 的 `SECTION_DEFINITIONS` 加一条，编辑器 UI、字段目录、AI 映射模板自动生效
-- **新增表单控件类型**：`src/fill/types.ts` 加 `FieldKind` + `src/fill/filler/modes.ts` 加分发分支
+- **新增表单控件类型**：`src/fill/types.ts` 加 `FieldKind` + `src/fill/execute/strategies.ts` 注册策略 + `src/fill/observe.ts` 补当前值读取分支
 - **新增填充模式**：`src/features/fill-flow/useFillFlow.ts` 加 action 配置 + controller 加分支
 
 ### 发布

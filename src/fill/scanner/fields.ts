@@ -36,6 +36,15 @@ function pickLikelyFormRoot(): ParentNode {
   return document
 }
 
+/** 日期/时间类 picker 的 combobox 交给只读日期面板路径处理（.ant-picker/.el-date-editor 等） */
+function isPickerLikeCombobox(el: Element): boolean {
+  return Boolean(
+    el.closest?.(
+      '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[class*="datepicker"],[class*="DatePicker"]',
+    ),
+  )
+}
+
 function buildTextLikeRuntime(
   fieldId: string,
   el: HTMLInputElement,
@@ -78,6 +87,10 @@ export function scanFields({ scope = 'page', selectionRect = null }: { scope?: '
   for (const el of elements) {
     if (!isFillableElement(el)) continue
 
+    // combobox 内部件（搜索输入框等）不单独成字段，由 combobox 整体接管
+    const comboboxAncestor = el.closest?.('[role="combobox"]')
+    if (comboboxAncestor && comboboxAncestor !== el) continue
+
     const tag = el.tagName.toLowerCase()
     const baseInputType = tag === 'input' ? String(el.getAttribute('type') || 'text').toLowerCase() : ''
     const semanticMeta = buildFieldSemanticMeta(el, {
@@ -91,6 +104,35 @@ export function scanFields({ scope = 'page', selectionRect = null }: { scope?: '
       sectionLabel: semanticMeta.sectionLabel,
       sectionEvidence: semanticMeta.sectionEvidence,
       nearbyLabels: semanticMeta.nearbyLabels,
+    }
+
+    // 自定义下拉（Ant/Element/Arco 等）：role=combobox，选项点击后才渲染。
+    // 日历类 picker 排除（走只读日期面板路径）。
+    if (comboboxAncestor === el && !isPickerLikeCombobox(el)) {
+      const fieldId = `f_${++idSeq}`
+      fields.push({
+        fieldId,
+        kind: 'custom_select',
+        label: semanticMeta.label,
+        name: el.getAttribute('name') || '',
+        id: el.id || '',
+        placeholder: el.getAttribute('placeholder') || '',
+        inputType: baseInputType,
+        options: [],
+        ...commonMeta,
+      })
+
+      runtime.push({
+        fieldId,
+        kind: 'custom_select',
+        el,
+        inputType: baseInputType || undefined,
+        label: semanticMeta.label,
+        placeholder: el.getAttribute('placeholder') || '',
+        context: semanticMeta.context,
+        nearbyLabels: semanticMeta.nearbyLabels,
+      })
+      continue
     }
 
     if (tag === 'select') {
@@ -339,16 +381,52 @@ export function rectsIntersect(leftRect: ViewportRect, rightRect: ViewportRect):
   )
 }
 
+/**
+ * iframe 内元素的 getBoundingClientRect 相对 iframe 自身 viewport，
+ * 选区矩形是主页面 viewport 坐标——沿宿主 frameElement 链把偏移累加换算。
+ * 深度封顶防异常循环引用。
+ */
+function elementViewportRect(el: Element): ViewportRect | null {
+  const own = rectFromDomRect(el.getBoundingClientRect())
+  if (!own) return null
+
+  let offsetLeft = 0
+  let offsetTop = 0
+  let depth = 0
+  let view = el.ownerDocument?.defaultView
+
+  while (view && view !== window && depth < 5) {
+    const frame = view.frameElement
+    if (!frame) break
+    const frameRect = frame.getBoundingClientRect()
+    offsetLeft += Number(frameRect.left || 0)
+    offsetTop += Number(frameRect.top || 0)
+    view = frame.ownerDocument?.defaultView
+    depth += 1
+  }
+
+  if (offsetLeft === 0 && offsetTop === 0) return own
+
+  return {
+    left: own.left + offsetLeft,
+    top: own.top + offsetTop,
+    right: own.right + offsetLeft,
+    bottom: own.bottom + offsetTop,
+    width: own.width,
+    height: own.height,
+  }
+}
+
 function getRuntimeViewportRect(runtime: FieldRuntime): ViewportRect | null {
   if (!runtime) return null
 
   if (runtime.el) {
-    return rectFromDomRect(runtime.el.getBoundingClientRect())
+    return elementViewportRect(runtime.el)
   }
 
   if (Array.isArray(runtime.options) && runtime.options.length > 0) {
     const rects = runtime.options
-      .map((option) => rectFromDomRect(option?.el?.getBoundingClientRect?.()))
+      .map((option) => (option?.el ? elementViewportRect(option.el) : null))
       .filter(Boolean) as ViewportRect[]
     return mergeRects(rects)
   }

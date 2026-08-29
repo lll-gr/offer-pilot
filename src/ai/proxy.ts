@@ -49,12 +49,17 @@ export async function callAI(
   modelId: string,
   prompt: string,
   mode: string,
-  deps: CallAiDeps = {}
+  deps: CallAiDeps & { signal?: AbortSignal } = {}
 ): Promise<string> {
   const fetchImpl = deps.fetch ?? (globalThis.fetch as unknown as FetchLike)
   const getConfig = deps.getModelConfig ?? getModelConfig
   const sleep = deps.sleep ?? defaultSleep
   const logError = deps.logError ?? ((message, detail) => console.error(message, detail))
+  const externalSignal = deps.signal
+
+  if (externalSignal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
 
   const config = await getConfig(modelId)
   if (!config?.baseUrl || !config?.apiKey || !config?.model) {
@@ -81,7 +86,7 @@ export async function callAI(
     messages,
   }
 
-  let response = await postChatCompletion(fetchImpl, url, headers, body)
+  let response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
 
   // 部分兼容接口不支持 JSON mode；识别后去掉该参数重试一次。
   if (response.status === 400) {
@@ -92,7 +97,7 @@ export async function callAI(
         temperature: 0.2,
         messages,
       }
-      response = await postChatCompletion(fetchImpl, url, headers, body)
+      response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
     } else {
       throw createApiError(response.status, errorText, logError)
     }
@@ -100,7 +105,7 @@ export async function callAI(
 
   if (RETRYABLE_STATUSES.has(response.status)) {
     await sleep(RETRY_DELAY_MS)
-    response = await postChatCompletion(fetchImpl, url, headers, body)
+    response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
   }
 
   if (!response.ok) {
@@ -126,10 +131,14 @@ async function postChatCompletion(
   fetchImpl: FetchLike,
   url: string,
   headers: Record<string, string>,
-  body: ChatRequestBody
+  body: ChatRequestBody,
+  externalSignal?: AbortSignal
 ): Promise<ResponseLike> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  // 外部取消（用户停止填充）与超时共用同一 abort 通道
+  const onExternalAbort = () => controller.abort()
+  externalSignal?.addEventListener('abort', onExternalAbort)
   try {
     return await fetchImpl(url, {
       method: 'POST',
@@ -139,11 +148,16 @@ async function postChatCompletion(
     })
   } catch (err) {
     if ((err as { name?: string })?.name === 'AbortError') {
+      // 外部取消（用户停止）原样抛 AbortError，仅超时转友好文案
+      if (externalSignal?.aborted) {
+        throw err
+      }
       throw new Error('API 请求超时：请检查网络/Key/模型是否可用后重试')
     }
     throw new Error(`网络请求失败：${(err as Error)?.message || String(err)}`)
   } finally {
     clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', onExternalAbort)
   }
 }
 

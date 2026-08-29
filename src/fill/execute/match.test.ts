@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { OptionRuntime } from '../types'
-import { getMatchScore, isAffirmative, matchesAnyCandidate, pickBestOption } from './match'
+import { getMatchScore, isAffirmative, matchesAnyCandidate, normalizeOptionText, pickBestOption } from './match'
 
 describe('option matching', () => {
   it('scores exact matches as 100', () => {
@@ -65,6 +65,33 @@ describe('option matching', () => {
     expect(isAffirmative('yes')).toBe(true)
     expect(isAffirmative('否')).toBe(false)
     expect(isAffirmative('')).toBe(false)
+  })
+
+  it('rewrites cross-language equivalences', () => {
+    expect(normalizeOptionText('PRC')).toBe('中国')
+    expect(normalizeOptionText('Chinese')).toBe('中国')
+    expect(normalizeOptionText('中华人民共和国')).toBe('中国')
+    expect(normalizeOptionText('至今')).toBe('present')
+    expect(normalizeOptionText('硕士研究生')).toBe('硕士')
+    expect(normalizeOptionText('大学本科')).toBe('本科')
+  })
+
+  it('matches cross-language nationality and present forms', () => {
+    expect(getMatchScore('中国', 'PRC')).toBe(100)
+    expect(getMatchScore('中国', 'Chinese')).toBe(100)
+    expect(getMatchScore('至今', 'present')).toBe(100)
+    expect(getMatchScore('2020至今', 'present')).toBe(75) // 复合选项包含
+  })
+
+  it('does not corrupt unmatched Chinese text', () => {
+    expect(normalizeOptionText('中国科学院大学')).toBe('中国科学院大学')
+    expect(getMatchScore('中国科学院大学', '中国科学院大学')).toBe(100)
+  })
+
+  it('rejects cross-group alias containment as pollution', () => {
+    expect(getMatchScore('男', '女')).toBe(0) // male ⊂ female 不计分
+    expect(getMatchScore('非全日制', '全日制')).toBe(0)
+    expect(getMatchScore('统招全日制本科', '统招')).toBe(75) // 原文包含仍有效
   })
 
   it('pickBestRuntimeOption works for runtime options', () => {

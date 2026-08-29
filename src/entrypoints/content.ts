@@ -1,6 +1,7 @@
 import { defineContentScript } from 'wxt/utils/define-content-script'
 
-import { getPingInfo, getStatus, handleStartFill } from '@/fill/controller'
+import { correctMapping, getLastMappings, getPingInfo, getStatus, handleStartFill, requestCancelFill } from '@/fill/controller'
+import type { FieldDecision } from '@/fill/types'
 import type { StartFillRequest } from '@/messaging/bridge'
 
 import '@/fill/page-overlays.css'
@@ -21,6 +22,24 @@ export default defineContentScript({
       if (action === 'getStatus') {
         sendResponse({ success: true, ...getStatus() })
         return
+      }
+
+      if (action === 'cancelFill') {
+        sendResponse({ success: true, canceled: requestCancelFill() })
+        return
+      }
+
+      if (action === 'getMappings') {
+        sendResponse({ success: true, session: getLastMappings() })
+        return
+      }
+
+      if (action === 'correctMapping') {
+        const request = message as { fieldId: string; resumePath: string; actionOverride?: FieldDecision['action'] }
+        correctMapping(request.fieldId, request.resumePath, request.actionOverride)
+          .then((result) => sendResponse(result))
+          .catch((error: Error) => sendResponse({ success: false, message: error?.message || String(error) }))
+        return true
       }
 
       if (action === 'startFill') {

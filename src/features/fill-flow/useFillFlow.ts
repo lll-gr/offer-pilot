@@ -7,11 +7,11 @@ import { useCallback, useRef, useState } from 'react'
 
 import { getActiveModel, isConfiguredModel } from '@/models/storage'
 import { MAPPING_CACHE_KEY, contentScriptHasDiagnosticsSupport } from '@/messaging/bridge'
-import type { StartFillResponse } from '@/messaging/bridge'
+import type { FillFieldReport, StartFillResponse } from '@/messaging/bridge'
 import { hasAnyFilledField } from '@/resume/schema'
 import type { ResumeProfile } from '@/resume/schema'
 import { getActiveTab, isSupportedWebPageUrl, sendTabMessage } from '@/lib/tabs'
-import type { FillStats } from '@/features/run-logs/useRunLog'
+import type { FillStats } from '@/features/run-logs/useFillEvents'
 
 export type FillActionKey = 'overwritePage' | 'incrementalPage' | 'selection' | 'segmentedPage'
 
@@ -109,6 +109,7 @@ export function useFillFlow({
   const [isFilling, setIsFilling] = useState(false)
   const [runningAction, setRunningAction] = useState<FillActionKey | null>(null)
   const [fillTip, setFillTip] = useState<string | null>(null)
+  const [fieldReport, setFieldReport] = useState<FillFieldReport[]>([])
   const isFillingRef = useRef(false)
 
   const runFill = useCallback(
@@ -157,6 +158,7 @@ export function useFillFlow({
         setIsFilling(true)
         setRunningAction(actionKey)
         setFillTip(null)
+        setFieldReport([])
         onStatus('running', actionConfig.statusText)
         onSessionBegin(tab)
         onLog('info', actionConfig.startLog)
@@ -184,7 +186,7 @@ export function useFillFlow({
             if (response?.canceled) {
               onLog('info', response.message || '已取消本次操作')
               onStatus('ready', '已取消')
-              // 不传 stats：会话统计由 useRunLog 跟踪的中途 updateStats 保留
+              // 不传 stats：会话统计由 useFillEvents 跟踪的中途 stats 事件 保留
               await onSessionEnd({
                 status: 'canceled',
                 errorMessage: response.message || '',
@@ -201,6 +203,7 @@ export function useFillFlow({
           }
           onStats(stats)
           setFillTip(buildFillTipText(actionKey, response.cacheHit))
+          setFieldReport(response.fieldReport || [])
 
           onLog(
             'success',
@@ -211,7 +214,7 @@ export function useFillFlow({
         } catch (error) {
           onLog('error', `填充失败：${(error as Error).message}`)
           onStatus('error', '失败')
-          // 不传 stats：会话统计保留 useRunLog 跟踪的中途值
+          // 不传 stats：会话统计保留 useFillEvents 跟踪的中途值
           await onSessionEnd({
             status: 'error',
             errorMessage: (error as Error).message,
@@ -242,5 +245,13 @@ export function useFillFlow({
     setFillTip(null)
   }, [onLog])
 
-  return { isFilling, runningAction, fillTip, runFill, clearMappingCache }
+  /** 请求中止当前填充（content 侧逐字段检查 signal） */
+  const cancelFill = useCallback(async () => {
+    const tab = await getActiveTab()
+    if (!tab?.id) return
+    onLog('info', '已发送停止指令...')
+    await sendTabMessage(tab.id, { action: 'cancelFill' }).catch(() => {})
+  }, [onLog])
+
+  return { isFilling, runningAction, fillTip, fieldReport, runFill, cancelFill, clearMappingCache }
 }

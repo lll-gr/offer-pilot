@@ -1,44 +1,77 @@
 /**
- * 分块多步填充编排：逐块填写 → 下一步决策（规则→AI→人工三级兜底）→ 等待翻页 → 重扫描续填。
+ * 分块多步填充编排：逐块填写 → 推进决策（责任链：规则→AI→人工）→ 等待翻页 → 重扫描续填。
  * 不自动提交；统计经 onStats 回调上报（controller 持有运行时状态）。
  */
 
-import { callAI } from '@/ai/client'
-import { parseJsonFromAiText } from '@/ai/json'
-import type { StartFillResponse } from '@/messaging/bridge'
-import { buildDecisionPrompt, normalizeDecisionResponse } from './decision'
-import type { DecisionContext, SegmentDecision } from './decision'
-import { clickLikeUser } from './filler/dom'
+import type { FillFieldReport, StartFillResponse } from '@/messaging/bridge'
+import type { FieldProgressEvent, PhaseEvent } from '@/messaging/events'
+import { decideAdvance } from './advance-deciders'
 import { scheduleHighlightAutoClear, showFieldHighlights } from './highlight'
-import { buildMappingsForFields, fillFieldsByIds } from './pipeline'
-import type { SendLog, SendStats } from './pipeline'
+import { observeFields } from './observe'
+import { buildFillPlan } from './plan/build'
+import { executePlan } from './execute/pipeline'
+import type { SendLog, SendStats } from './execute/pipeline'
 import { scanFields } from './scanner/fields'
-import type { ScanResult } from './types'
+import type { FieldOutcome, ScanResult } from './types'
 import { detectFormSegments, findNextStepCandidates, waitForSegmentChange } from './segments'
 import type { FieldRuntime } from './types'
 
 export interface SegmentedFlowDeps {
   sendLog: SendLog
   sendStats: SendStats
+  signal?: AbortSignal
+  /** 观察者推送：阶段事件（planning/aiBatch） */
+  onPhase?: (event: PhaseEvent) => void
+  /** 观察者推送：字段级进度事件（UI 实时进度） */
+  onFieldProgress?: (event: FieldProgressEvent) => void
 }
 
-/** 分块多步填充主循环。 */
+/** 字段级结果清单（与 controller.buildFieldReport 同口径；跨块累计） */
+function collectSegmentReport(
+  outcomes: FieldOutcome[],
+  labelById: Map<string, string>
+): FillFieldReport[] {
+  return outcomes
+    .filter((item) => {
+      if (item.outcome === 'filled') {
+        return !item.verified || Boolean(item.message)
+      }
+      return item.outcome !== 'skipped'
+    })
+    .map((item) => ({
+      fieldId: item.fieldId,
+      label: labelById.get(item.fieldId) || item.fieldId,
+      outcome: item.outcome,
+      verified: item.verified,
+      message: item.message,
+    }))
+}
+
+/** 分块多步填充主循环：当前页所有块顺序填完 → 等待翻页 → 重扫描续填。 */
 export async function runSegmentedFill(
   initialScan: ScanResult,
   resumeProfile: Record<string, unknown>,
   modelId: string,
-  { sendLog, sendStats }: SegmentedFlowDeps
+  { sendLog, sendStats, signal, onPhase, onFieldProgress }: SegmentedFlowDeps
 ): Promise<StartFillResponse> {
   let scan = initialScan
   let totalFilled = 0
   let totalMapped = 0
-  let segmentIndex = 0
+  let segmentRound = 0
+  const fieldReport: FillFieldReport[] = []
+  const labelById = new Map<string, string>()
 
   const reportStats = (fieldCount: number) => {
     sendStats(fieldCount, totalMapped, totalFilled)
   }
 
   while (true) {
+    if (signal?.aborted) {
+      scheduleHighlightAutoClear()
+      sendLog('warning', '收到停止指令，分步填充已中止。')
+      break
+    }
+
     const fieldRuntimeMap = new Map<string, FieldRuntime>()
     for (const runtime of scan.runtime) {
       fieldRuntimeMap.set(runtime.fieldId, runtime)
@@ -46,65 +79,94 @@ export async function runSegmentedFill(
 
     const segments = detectFormSegments(scan.fields, fieldRuntimeMap)
     if (segments.length === 0) {
-      break
-    }
-
-    // 只处理含字段的块；当前轮按序处理第一块（其余块属于「下一页」的内容）
-    const segment = segments[0]
-    const segmentFields = scan.fields.filter((field) => segment.fieldIds.includes(field.fieldId))
-
-    sendLog('info', `开始处理第 ${segmentIndex + 1} 块（本页共 ${segments.length} 块，块内 ${segmentFields.length} 个字段）...`)
-
-    const { mappingById } = await buildMappingsForFields(segmentFields, resumeProfile, modelId, { sendLog })
-    totalMapped += Array.from(mappingById.values()).filter((item) => Boolean(item.resumePath?.trim())).length
-
-    const outcome = await fillFieldsByIds(segmentFields, fieldRuntimeMap, mappingById, resumeProfile, {
-      fillMode: 'overwrite',
-      sendLog,
-    })
-    totalFilled += outcome.filledCount
-
-    if (outcome.filledRuntimes.length > 0) {
-      showFieldHighlights(outcome.filledRuntimes)
-    }
-
-    reportStats(scan.fields.length)
-
-    // 剩余块属于后续步骤：先等用户翻页
-    const hasMoreSegments = segments.length > 1
-    if (!hasMoreSegments) {
       scheduleHighlightAutoClear()
       sendLog('success', `分步填充完成：共填写 ${totalFilled} 个字段。请检查后手动提交。`)
       break
     }
 
-    sendLog('info', `第 ${segmentIndex + 1} 块填写完成，正在确认下一步操作...`)
+    // 单页多块：当前页所有块顺序填完，而不是只填第一块
+    const filledFieldIds = new Set<string>()
+    for (const [segmentIndex, segment] of segments.entries()) {
+      const segmentFields = scan.fields.filter(
+        (field) => segment.fieldIds.includes(field.fieldId) && !filledFieldIds.has(field.fieldId),
+      )
+      if (segmentFields.length === 0) continue
 
-    const segmentEls = segmentFields
-      .map((field) => fieldRuntimeMap.get(field.fieldId)?.el)
+      sendLog(
+        'info',
+        `第 ${segmentRound + 1} 轮 · 块 ${segmentIndex + 1}/${segments.length}（${segmentFields.length} 个字段）...`,
+      )
+
+      const segmentObservations = observeFields(segmentFields, fieldRuntimeMap)
+      for (const observation of segmentObservations) {
+        labelById.set(
+          observation.descriptor.fieldId,
+          observation.descriptor.label || observation.descriptor.fieldId,
+        )
+      }
+      const { plan } = await buildFillPlan(segmentObservations, resumeProfile, modelId, {
+        sendLog,
+        signal,
+        onPhase,
+      })
+      totalMapped += plan.filter((decision) => Boolean(decision.resumePath?.trim())).length
+
+      const decisionById = new Map(plan.map((decision) => [decision.fieldId, decision]))
+      onPhase?.({ type: 'phase', phase: 'executing' })
+      const outcome = await executePlan(segmentObservations, decisionById, resumeProfile, {
+        fillMode: 'overwrite',
+        sendLog,
+        signal,
+        onFieldProgress,
+      })
+      totalFilled += outcome.filledCount
+      fieldReport.push(...collectSegmentReport(outcome.outcomes, labelById))
+      segmentFields.forEach((field) => filledFieldIds.add(field.fieldId))
+
+      if (outcome.filledRuntimes.length > 0) {
+        showFieldHighlights(outcome.filledRuntimes)
+      }
+    }
+
+    reportStats(scan.fields.length)
+    segmentRound += 1
+
+    sendLog('info', '本页所有块已填写完成，正在确认下一步操作...')
+
+    const segmentEls = Array.from(filledFieldIds)
+      .map((fieldId) => fieldRuntimeMap.get(fieldId)?.el)
       .filter(Boolean) as Element[]
 
-    // 规则优先：唯一候选直接点击；0 或多个候选时咨询 AI
-    const candidates = findNextStepCandidates(segment.rootEl)
-    const proceed = await decideAndAdvance(
-      {
-        segmentIndex,
-        segmentTotal: segments.length,
-        lastSegmentLabels: segmentFields.map((field) => field.label || field.fieldId),
+    // 推进决策：责任链（规则→AI→人工）
+    const candidates = findNextStepCandidates()
+    const verdict = await decideAdvance({
+      ctx: {
+        segmentIndex: segmentRound - 1,
+        segmentTotal: segmentRound,
+        lastSegmentLabels: scan.fields
+          .filter((field) => filledFieldIds.has(field.fieldId))
+          .map((field) => field.label || field.fieldId),
         candidates: candidates.map((item) => ({ text: item.text })),
       },
       candidates,
       modelId,
-      { sendLog },
-    )
+      sendLog,
+      signal,
+    })
 
-    if (proceed === 'stop') {
+    if (verdict.kind === 'stop') {
       scheduleHighlightAutoClear()
-      sendLog('success', `分步填充终止：共填写 ${totalFilled} 个字段。`)
+      sendLog('success', `分步填充终止：${verdict.reason || '决策链建议停止'}。共填写 ${totalFilled} 个字段。`)
       break
     }
 
-    const changed = await waitForSegmentChange(segmentEls)
+    if (verdict.kind === 'ask_human') {
+      sendLog('warning', '请手动点击页面上的下一步/提交按钮，我会自动继续填写下一块。')
+    } else if (verdict.kind === 'wait') {
+      sendLog('info', `AI 建议等待页面变化（${verdict.reason}）。`)
+    }
+
+    const changed = await waitForSegmentChange(segmentEls, { signal })
 
     if (!changed) {
       scheduleHighlightAutoClear()
@@ -112,7 +174,6 @@ export async function runSegmentedFill(
       break
     }
 
-    segmentIndex += 1
     sendLog('info', '检测到页面已翻页，正在扫描新的表单内容...')
 
     // 重扫描（字段结构可能不同，映射缓存 key 随之变化）；字段数骤变时咨询 AI 确认
@@ -128,26 +189,33 @@ export async function runSegmentedFill(
       const ratio = scan.fields.length / prevFieldCount
       if (ratio < 0.3 || ratio > 3) {
         sendLog('warning', `检测到字段数骤变（${prevFieldCount} → ${scan.fields.length}），正在请 AI 确认是否继续...`)
-        const decision = await consultDecision(
-          {
-            segmentIndex,
-            segmentTotal: segments.length,
-            lastSegmentLabels: segmentFields.map((field) => field.label || field.fieldId),
-            candidates: findNextStepCandidates().map((item) => ({ text: item.text })),
+        // 骤变场景：直接问 AI（走决策链会先过规则环，但此处没有可点的推进按钮，
+        // 规则环自然放行到 AI 环），只需要 stop/继续 的判断
+        const anomalyCandidates = findNextStepCandidates()
+        const verdict = await decideAdvance({
+          ctx: {
+            segmentIndex: segmentRound - 1,
+            segmentTotal: segmentRound,
+            lastSegmentLabels: scan.fields
+              .filter((field) => filledFieldIds.has(field.fieldId))
+              .map((field) => field.label || field.fieldId),
+            candidates: anomalyCandidates.map((item) => ({ text: item.text })),
             newFieldLabels: scan.fields.map((field) => field.label || field.fieldId).slice(0, 15),
             anomaly: `字段数从 ${prevFieldCount} 变为 ${scan.fields.length}`,
           },
+          candidates: anomalyCandidates,
           modelId,
-          { sendLog },
-        )
+          sendLog,
+          signal,
+        })
 
-        if (decision.action === 'stop') {
+        if (verdict.kind === 'stop') {
           scheduleHighlightAutoClear()
-          sendLog('warning', `AI 建议终止：${decision.reason}`)
+          sendLog('warning', `AI 建议终止：${verdict.reason}`)
           break
         }
-        if (decision.action === 'ask_human') {
-          sendLog('warning', `AI 不确定是否继续（${decision.reason}），请手动确认页面状态；将继续尝试填写当前块。`)
+        if (verdict.kind === 'ask_human') {
+          sendLog('warning', `AI 不确定是否继续（${verdict.reason}），请手动确认页面状态；将继续尝试填写当前块。`)
         }
       }
     }
@@ -155,66 +223,11 @@ export async function runSegmentedFill(
 
   return {
     success: true,
+    canceled: Boolean(signal?.aborted),
     fieldCount: scan.fields.length,
     mappedCount: totalMapped,
     filledCount: totalFilled,
-    segmentCount: segmentIndex + 1,
+    segmentCount: segmentRound,
+    fieldReport,
   }
-}
-
-/** 单次 AI 决策咨询（失败静默回退 ask_human） */
-async function consultDecision(
-  ctx: DecisionContext,
-  modelId: string,
-  { sendLog }: { sendLog: SendLog }
-): Promise<SegmentDecision> {
-  try {
-    const prompt = buildDecisionPrompt(ctx)
-    const aiText = await callAI(modelId, prompt, 'segment_decision')
-    const decision = normalizeDecisionResponse(parseJsonFromAiText(aiText), (ctx.candidates || []).length)
-    sendLog('info', `[AI决策] ${decision.action}${decision.buttonIndex >= 0 ? ` #${decision.buttonIndex}` : ''}：${decision.reason || '（无理由）'}`)
-    return decision
-  } catch (error) {
-    sendLog('warning', `AI 决策咨询失败（${(error as Error).message}），回退为等待人工操作。`)
-    return { action: 'ask_human', buttonIndex: -1, reason: 'AI 调用失败' }
-  }
-}
-
-/**
- * 按钮歧义时的推进决策：唯一候选直接点（纯规则免 AI）；
- * 0 或 ≥2 候选咨询 AI；click→代点，wait/ask_human→提示用户手动点，stop→终止。
- * 返回 'stop' 表示应终止流程。
- */
-async function decideAndAdvance(
-  ctx: DecisionContext,
-  candidates: { text: string; el: Element }[],
-  modelId: string,
-  { sendLog }: { sendLog: SendLog }
-): Promise<'stop' | 'continue'> {
-  if (candidates.length === 1) {
-    sendLog('info', `检测到唯一候选按钮「${candidates[0].text}」，代为点击。`)
-    clickLikeUser(candidates[0].el)
-    return 'continue'
-  }
-
-  const decision = await consultDecision(ctx, modelId, { sendLog })
-
-  if (decision.action === 'click' && candidates[decision.buttonIndex]) {
-    sendLog('info', `按 AI 建议点击「${candidates[decision.buttonIndex].text}」。`)
-    clickLikeUser(candidates[decision.buttonIndex].el)
-    return 'continue'
-  }
-
-  if (decision.action === 'stop') {
-    return 'stop'
-  }
-
-  if (decision.action === 'wait') {
-    sendLog('info', `AI 建议等待页面变化（${decision.reason}）。`)
-    return 'continue'
-  }
-
-  // ask_human / click 越界（已在 normalize 回退）：等用户手动操作
-  sendLog('warning', '请手动点击页面上的下一步/提交按钮，我会自动继续填写下一块。')
-  return 'continue'
 }

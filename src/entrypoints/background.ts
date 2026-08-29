@@ -20,7 +20,8 @@ export default defineBackground(() => {
       return true // 保持消息通道用于异步响应
     }
 
-    // log / updateStats / error 通知：仅转发给侧边栏（无需 background 处理），忽略即可
+    // FillEvent 通知（log/stats/phase/fieldProgress）：content → 侧栏的 UI 遥测事件，
+    // background 无需处理，忽略即可（契约见 messaging/events.ts）
     return
   })
 })

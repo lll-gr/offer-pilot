@@ -5,7 +5,7 @@
  */
 
 /** content script 版本：content 侧行为变更时 bump，旧脚本 ping 会被判为过期 */
-export const CONTENT_SCRIPT_VERSION = '2026-08-28-offer-pilot-v2'
+export const CONTENT_SCRIPT_VERSION = '2026-08-29-offer-pilot-v4'
 
 /** 字段映射缓存的 storage key（popup 清理按钮与 content 读写共用） */
 export const MAPPING_CACHE_KEY = 'fieldMappingCacheV3'
@@ -31,6 +31,15 @@ export interface StartFillRequest {
   scope: 'page' | 'selection'
 }
 
+/** 填充结束后的字段级结果汇总（决策透明化：UI 展示待人工/保留/失败清单） */
+export interface FillFieldReport {
+  fieldId: string
+  label: string
+  outcome: 'filled' | 'kept' | 'manual' | 'skipped' | 'failed'
+  verified: boolean
+  message?: string
+}
+
 export interface StartFillResponse {
   success: boolean
   canceled?: boolean
@@ -40,16 +49,18 @@ export interface StartFillResponse {
   filledCount?: number
   cacheHit?: boolean
   segmentCount?: number
+  /** 待人工处理（AI 判 manual/低置信度/敏感）与失败字段的清单 */
+  fieldReport?: FillFieldReport[]
 }
 
-export type TabMessage = StartFillRequest | { action: 'ping' } | { action: 'getStatus' }
-export type TabMessageResponse = PingResponse | GetStatusResponse | StartFillResponse
+export type TabMessage =
+  | StartFillRequest
+  | { action: 'ping' }
+  | { action: 'getStatus' }
+  | { action: 'cancelFill' }
+export type TabMessageResponse = PingResponse | GetStatusResponse | StartFillResponse | { success: boolean; canceled: boolean }
 
-/** content script → background/sidepanel 的运行时通知 */
-export type RuntimeNotification =
-  | { type: 'log'; level: string; text: string }
-  | { type: 'updateStats'; fieldCount: number; mappedCount: number; filledCount: number }
-  | { type: 'error'; text: string }
+// 通知事件契约见 ./events.ts（FillEvent 单一真源）
 
 /** sidepanel → background 的 AI 调用请求 */
 export interface CallAiRequest {

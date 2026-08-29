@@ -66,12 +66,44 @@ export const MATCH_ALIAS_GROUPS: AliasGroup[] = [
 
 const NUMERIC_UNIT_SUFFIX = /^(?:\d+)(?:届|年|月|日|人|次|个|万|千|元|岁|k|w)$/i
 
+/** variant → 所属概念组（跨组包含污染防护用） */
+const VARIANT_GROUP_KEYS = new Map<string, string>(
+  MATCH_ALIAS_GROUPS.flatMap((group) => group.values.map((value) => [value, group.key] as const)),
+)
+
+/**
+ * 词面等价改写规则（normalizeForMatch 后应用，长词在前避免子串遮蔽）。
+ * 与 MATCH_ALIAS_GROUPS 互补：别名组要求整值相等，改写规则让复合选项
+ * （如「2020至今」「中华人民共和国」）与简历简写（present/中国）跨语言对齐。
+ */
+const OPTION_EQUIVALENCES: Array<[RegExp, string]> = [
+  [/博士研究生/g, '博士'],
+  [/硕士研究生/g, '硕士'],
+  [/大学本科/g, '本科'],
+  [/大学专科/g, '大专'],
+  [/中华人民共和国/g, '中国'],
+  [/chinese/g, '中国'],
+  [/china/g, '中国'],
+  [/prc/g, '中国'],
+  [/currently/g, 'present'],
+  [/current/g, 'present'],
+  [/至今/g, 'present'],
+]
+
+export function normalizeOptionText(value: unknown): string {
+  let text = normalizeForMatch(value)
+  for (const [pattern, replacement] of OPTION_EQUIVALENCES) {
+    text = text.replace(pattern, replacement)
+  }
+  return text
+}
+
 function expandMatchVariants(value: unknown): string[] {
   const text = String(value || '').trim()
   if (!text) return []
 
   const normalized = normalizeForMatch(text)
-  const variants = new Set([normalized])
+  const variants = new Set([normalized, normalizeOptionText(text)])
 
   for (const group of MATCH_ALIAS_GROUPS) {
     if (group.values.includes(normalized)) {
@@ -105,6 +137,11 @@ export function getMatchScore(optionText: string, candidateText: string): number
     for (const candidateVariant of candidateVariants) {
       if (!optionVariant || !candidateVariant) continue
       if (optionVariant === candidateVariant) return 100
+
+      // 不同概念组的别名互相包含是污染（male ⊂ female、全日制 ⊂ 非全日制），不计分
+      const optionGroup = VARIANT_GROUP_KEYS.get(optionVariant)
+      const candidateGroup = VARIANT_GROUP_KEYS.get(candidateVariant)
+      if (optionGroup && candidateGroup && optionGroup !== candidateGroup) continue
 
       if (optionVariant.includes(candidateVariant)) {
         bestScore = Math.max(bestScore, getContainmentScore(candidateVariant, optionVariant))
