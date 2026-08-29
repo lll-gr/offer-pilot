@@ -1215,3 +1215,40 @@ body {
   text-align: center;
   line-height: 1.6;
 }
+
+/* 更新提示条 */
+
+.op-update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 0 16px;
+  border: 1px solid var(--op-success);
+  border-radius: var(--op-radius-md);
+  background: var(--op-success-soft);
+  font-size: 12px;
+}
+
+.op-update-banner-text {
+  color: var(--op-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.op-update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.op-update-banner-link {
+  color: var(--op-text-2);
+}
+
+.op-update-banner-close {
+  padding: 2px;
+}

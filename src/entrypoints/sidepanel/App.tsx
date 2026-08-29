@@ -20,6 +20,7 @@ import { SlotBar } from '@/features/resume-editor/SlotBar'
 import { useResumeSlots } from '@/features/resume-editor/useResumeSlots'
 import { SettingsModal } from '@/features/model-settings/SettingsModal'
 import { useModels } from '@/features/model-settings/useModels'
+import { UpdateBanner } from '@/features/update-checker/UpdateBanner'
 import { LogViewer } from '@/features/run-logs/LogViewer'
 import { useLogExport } from '@/features/run-logs/useLogExport'
 import { useFillEvents } from '@/features/run-logs/useFillEvents'
@@ -120,6 +121,8 @@ export function SidepanelApp() {
           </button>
         </div>
       </header>
+
+      <UpdateBanner />
 
       <main className="op-main">
         <div className="op-tabs" role="tablist">
