@@ -24,6 +24,11 @@ export interface SegmentedFlowDeps {
   onPhase?: (event: PhaseEvent) => void
   /** 观察者推送：字段级进度事件（UI 实时进度） */
   onFieldProgress?: (event: FieldProgressEvent) => void
+  /** 应用设置（轮数上限/分批大小/重试次数/高亮延时） */
+  maxRounds?: number
+  batchSize?: number
+  retryCount?: number
+  highlightAutoClearMs?: number
 }
 
 /** 字段级结果清单（与 controller.buildFieldReport 同口径；跨块累计） */
@@ -52,7 +57,7 @@ export async function runSegmentedFill(
   initialScan: ScanResult,
   resumeProfile: Record<string, unknown>,
   modelId: string,
-  { sendLog, sendStats, signal, onPhase, onFieldProgress }: SegmentedFlowDeps
+  { sendLog, sendStats, signal, onPhase, onFieldProgress, maxRounds, batchSize, retryCount, highlightAutoClearMs }: SegmentedFlowDeps
 ): Promise<StartFillResponse> {
   let scan = initialScan
   let totalFilled = 0
@@ -65,7 +70,8 @@ export async function runSegmentedFill(
     sendStats(fieldCount, totalMapped, totalFilled)
   }
 
-  while (true) {
+  const roundLimit = Math.max(1, maxRounds ?? 30)
+  while (segmentRound < roundLimit) {
     if (signal?.aborted) {
       scheduleHighlightAutoClear()
       sendLog('warning', '收到停止指令，分步填充已中止。')
@@ -108,6 +114,7 @@ export async function runSegmentedFill(
         sendLog,
         signal,
         onPhase,
+        batchSize,
       })
       totalMapped += plan.filter((decision) => Boolean(decision.resumePath?.trim())).length
 

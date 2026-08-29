@@ -27,6 +27,8 @@ export interface FillContext {
   signal?: AbortSignal
   /** 每个字段填充前上报（进度反馈，由 controller 注入） */
   onFieldStart?: (fieldId: string) => void
+  /** 失败自动重试次数（应用设置注入，缺省 1） */
+  retryCount?: number
 }
 
 export type FillStrategy = (
@@ -114,7 +116,7 @@ const withProgress =
   }
 
 /**
- * 失败重试：异常时再试一次（日期面板等瞬态弹层失败常见）。
+ * 失败重试：异常时自动重试（日期面板等瞬态弹层失败常见），次数由 ctx.retryCount 控制（缺省 1）。
  *
  * 注意：radio/checkbox 策略内部是「点击」语义（非幂等）——若异常发生在点击之后
  * （如等待面板稳定失败），重试会二次点击。当前实现可接受（safeCheck 按目标态勾选，
@@ -124,18 +126,20 @@ const withProgress =
 const withRetry =
   (strategy: FillStrategy): FillStrategy =>
   async (runtime, value, ctx) => {
-    try {
-      return await strategy(runtime, value, ctx)
-    } catch (error) {
-      const firstMessage = (error as Error)?.message || String(error)
+    const maxRetries = Math.max(0, Math.min(3, Number(ctx.retryCount ?? 1)))
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
-        const result = await strategy(runtime, value, ctx)
-        ctx.logger?.(`字段 ${runtime.fieldId} 首次填充异常（${firstMessage}），重试成功`)
-        return result
-      } catch (secondError) {
-        return { filled: false, message: `填充失败：${(secondError as Error)?.message || firstMessage}` }
+        if (attempt > 0) {
+          ctx.logger?.(`字段 ${runtime.fieldId} 第 ${attempt} 次重试（上次：${lastError?.message || '未知'}）`)
+        }
+        return await strategy(runtime, value, ctx)
+      } catch (error) {
+        lastError = error as Error
       }
     }
+    return { filled: false, message: `填充失败：${lastError?.message || '未知错误'}` }
   }
 
 /** 组合装饰器（导出供测试与未来扩展自定义链） */

@@ -9,6 +9,7 @@ import type { FillFieldReport, StartFillResponse } from '@/messaging/bridge'
 import type { FieldProgressEvent, FillEvent, PhaseEvent } from '@/messaging/events'
 import { formatFieldSummary, formatMappingSummary } from '@/logs/diagnostics'
 import { normalizeResumeProfile } from '@/resume/schema'
+import { loadSettings } from '@/settings/storage'
 import { triggerExpandableSections } from './deep-scan'
 import { clearFieldHighlights, scheduleHighlightAutoClear, showFieldHighlights } from './highlight'
 import { observeFields } from './observe'
@@ -196,6 +197,9 @@ export async function handleStartFill(
     // 不依赖侧栏加载时机（LLM 只映射 personal.age，计算在代码里完成）
     resumeProfile = normalizeResumeProfile(resumeProfile)
 
+    // 应用设置本次会话快照：填充中途改设置不影响进行中的填充（行为可预期）
+    const settings = await loadSettings()
+
     const fillMode: FillMode =
       request?.fillMode === 'incremental' ? 'incremental' : request?.fillMode === 'segmented' ? 'segmented' : 'overwrite'
     const scope: FillScope = request?.scope === 'selection' ? 'selection' : 'page'
@@ -230,7 +234,9 @@ export async function handleStartFill(
     if (scope === 'page') {
       sendPhase({ type: 'phase', phase: 'expanding' })
       sendLog('info', '正在探索页面上的可展开区块...')
-      await triggerExpandableSections(resumeProfile, (message) => sendLog('info', message))
+      await triggerExpandableSections(resumeProfile, (message) => sendLog('info', message), {
+        maxRounds: settings.deepScanMaxRounds,
+      })
     }
 
     sendPhase({ type: 'phase', phase: 'scanning' })
@@ -269,6 +275,10 @@ export async function handleStartFill(
         signal: abort.signal,
         onPhase: sendPhase,
         onFieldProgress: sendFieldProgress,
+        maxRounds: settings.segmentMaxRounds,
+        batchSize: settings.aiBatchSize,
+        retryCount: settings.fillRetryCount,
+        highlightAutoClearMs: settings.highlightAutoClearMs,
       })
     }
 
@@ -278,6 +288,8 @@ export async function handleStartFill(
       sendLog,
       signal: abort.signal,
       onPhase: sendPhase,
+      batchSize: settings.aiBatchSize,
+      cacheMaxEntries: settings.cacheMaxEntries,
     })
     session.plan = {
       fields: scan.fields.map((field) => ({ fieldId: field.fieldId, label: field.label || field.fieldId })),
@@ -319,12 +331,13 @@ export async function handleStartFill(
       sendLog,
       signal: abort.signal,
       onFieldProgress: sendFieldProgress,
+      retryCount: settings.fillRetryCount,
       onProgress: (filledCount) => sendStats(scan.fields.length, mappedCount, filledCount),
     })
 
     if (outcome.filledRuntimes.length > 0) {
       showFieldHighlights(outcome.filledRuntimes)
-      scheduleHighlightAutoClear()
+      scheduleHighlightAutoClear(settings.highlightAutoClearMs)
     }
 
     sendStats(scan.fields.length, mappedCount, outcome.filledCount)

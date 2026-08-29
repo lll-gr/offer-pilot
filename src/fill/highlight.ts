@@ -40,11 +40,13 @@ export function clearFieldHighlights(): void {
   })
 }
 
-/** 重新调度自动清除；重复调用会重置计时器（分步填充跨块持续显示时用） */
+/** 重新调度自动清除；重复调用会重置计时器。ms=0 表示不自动清除（保留到下次填充） */
 export function scheduleHighlightAutoClear(ms: number = HIGHLIGHT_AUTO_CLEAR_MS): void {
   if (autoClearTimer) {
     clearTimeout(autoClearTimer)
+    autoClearTimer = null
   }
+  if (ms <= 0) return
   autoClearTimer = setTimeout(() => {
     autoClearTimer = null
     clearFieldHighlights()

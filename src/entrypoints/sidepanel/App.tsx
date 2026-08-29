@@ -8,7 +8,6 @@ import GearIcon from '@/assets/icons/gear.svg'
 import GithubIcon from '@/assets/icons/github.svg'
 import ListIcon from '@/assets/icons/list.svg'
 import { Modal } from '@/components/Modal'
-import { CacheManager } from '@/features/fill-flow/CacheManager'
 import { FillPanel } from '@/features/fill-flow/FillPanel'
 import { FillProgressPanel } from '@/features/fill-flow/FillProgressPanel'
 import { FillReportPanel } from '@/features/fill-flow/FillReportPanel'
@@ -18,8 +17,8 @@ import type { FillActionKey } from '@/features/fill-flow/useFillFlow'
 import { ResumeSummaryGrid } from '@/features/resume-editor/ResumeSummaryGrid'
 import { SlotBar } from '@/features/resume-editor/SlotBar'
 import { useResumeSlots } from '@/features/resume-editor/useResumeSlots'
-import { SettingsModal } from '@/features/model-settings/SettingsModal'
 import { useModels } from '@/features/model-settings/useModels'
+import { SettingsPanel } from '@/features/model-settings/SettingsPanel'
 import { UpdateBanner } from '@/features/update-checker/UpdateBanner'
 import { LogViewer } from '@/features/run-logs/LogViewer'
 import { useLogExport } from '@/features/run-logs/useLogExport'
@@ -32,12 +31,12 @@ const INITIAL_STATS: FillStats = { fieldCount: 0, mappedCount: 0, filledCount: 0
 
 export function SidepanelApp() {
   const [activeTab, setActiveTab] = useState<'fill' | 'resume'>('fill')
+  const [settingsView, setSettingsView] = useState(false)
   const [stats, setStats] = useState<FillStats>(INITIAL_STATS)
   const [status, setStatus] = useState<{ type: string; text: string }>({
     type: '',
     text: '等待开始',
   })
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
 
   const resumeApi = useResumeSlots()
@@ -74,7 +73,7 @@ export function SidepanelApp() {
     onSessionBegin: fillEvents.beginFillSession,
     onSessionEnd: handleSessionEnd,
     onRequireResume: () => setActiveTab('resume'),
-    onRequireSettings: () => setSettingsOpen(true),
+    onRequireSettings: () => setSettingsView(true),
   })
 
   const hasResumeData = hasAnyFilledField(resumeApi.profile)
@@ -114,8 +113,8 @@ export function SidepanelApp() {
           </button>
           <button
             className="op-icon-btn"
-            title="模型设置"
-            onClick={() => setSettingsOpen(true)}
+            title="设置"
+            onClick={() => setSettingsView(true)}
           >
             <GearIcon width={19} height={19} />
           </button>
@@ -125,6 +124,10 @@ export function SidepanelApp() {
       <UpdateBanner />
 
       <main className="op-main">
+        {settingsView ? (
+          <SettingsPanel onBack={() => setSettingsView(false)} onLog={fillEvents.addLog} />
+        ) : (
+        <>
         <div className="op-tabs" role="tablist">
           <button
             role="tab"
@@ -147,7 +150,7 @@ export function SidepanelApp() {
         {activeTab === 'fill' ? (
           <>
             {!hasModelKey ? (
-              <button className="op-empty-resume" onClick={() => setSettingsOpen(true)}>
+              <button className="op-empty-resume" onClick={() => setSettingsView(true)}>
                 <span className="op-empty-resume-title">模型未配置，填充前请先填 API Key</span>
                 <span className="op-empty-resume-action">去配置 →</span>
               </button>
@@ -159,7 +162,7 @@ export function SidepanelApp() {
               runningAction={fillFlow.runningAction}
               fillTip={fillFlow.fillTip}
               onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
-              onClearCache={() => void fillFlow.clearMappingCache()}
+              onClearCache={() => setSettingsView(true)}
               onCancel={() => void fillFlow.cancelFill()}
               onRequireResume={() => setActiveTab('resume')}
             />
@@ -169,7 +172,6 @@ export function SidepanelApp() {
               <>
                 <FillReportPanel report={fillFlow.fieldReport} />
                 <MappingCorrection onLog={fillEvents.addLog} refreshKey={stats.filledCount + stats.mappedCount} />
-                <CacheManager onLog={fillEvents.addLog} />
               </>
             )}
           </>
@@ -213,6 +215,8 @@ export function SidepanelApp() {
             </div>
           </section>
         )}
+        </>
+        )}
       </main>
 
       <Modal title={`运行日志（${fillEvents.logs.length}）`} open={logsOpen} onClose={() => setLogsOpen(false)}>
@@ -226,12 +230,6 @@ export function SidepanelApp() {
         />
       </Modal>
 
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        modelsApi={modelsApi}
-        onLog={fillEvents.addLog}
-      />
     </div>
   )
 }

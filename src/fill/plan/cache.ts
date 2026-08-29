@@ -472,7 +472,8 @@ export async function loadMappingCacheEntry(
 export async function saveMappingCacheEntry(
   cacheKey: string,
   entry: MappingCacheEntry,
-  storageOverride?: StorageArea
+  storageOverride?: StorageArea,
+  { maxEntries = MAX_CACHE_ENTRIES }: { maxEntries?: number } = {}
 ): Promise<void> {
   const storage = storageOverride ?? getStorageArea()
   if (!storage) return
@@ -492,7 +493,7 @@ export async function saveMappingCacheEntry(
   })
 
   const nextCache: Record<string, MappingCacheEntry> = {}
-  keys.slice(0, MAX_CACHE_ENTRIES).forEach((key) => {
+  keys.slice(0, Math.max(1, maxEntries)).forEach((key) => {
     nextCache[key] = cache[key]
   })
 

@@ -43,6 +43,7 @@ export async function executePlan(
     onFieldStart,
     onProgress,
     onFieldProgress,
+    retryCount,
   }: {
     fillMode: FillMode
     sendLog: SendLog
@@ -50,6 +51,7 @@ export async function executePlan(
     onFieldStart?: FillContext['onFieldStart']
     onProgress?: (filledCount: number) => void
     onFieldProgress?: (event: FieldProgressEvent) => void
+    retryCount?: number
   }
 ): Promise<ExecuteOutcome> {
   let filledCount = 0
@@ -166,6 +168,7 @@ export async function executePlan(
       logger: (message) => sendLog('info', message),
       signal,
       onFieldStart,
+      retryCount,
     })
     sendLog(
       fillResult.filled ? 'success' : 'warning',

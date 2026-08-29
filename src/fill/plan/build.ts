@@ -36,11 +36,16 @@ async function planWithAi(
   observations: FieldObservation[],
   resumeProfile: Record<string, unknown>,
   modelId: string,
-  { sendLog, signal, onPhase }: { sendLog: SendLog; signal?: AbortSignal; onPhase?: EmitPhase }
+  {
+    sendLog,
+    signal,
+    onPhase,
+    batchSize = MAX_FIELDS_PER_AI_BATCH,
+  }: { sendLog: SendLog; signal?: AbortSignal; onPhase?: EmitPhase; batchSize?: number }
 ): Promise<FieldDecision[]> {
   if (observations.length === 0) return []
 
-  if (observations.length <= MAX_FIELDS_PER_AI_BATCH) {
+  if (observations.length <= batchSize) {
     onPhase?.({ type: 'phase', phase: 'aiBatch', batch: 1, batches: 1 })
     const promptPayload = buildFieldPlanningPayload(observations, resumeProfile, {
       url: location.href,
@@ -52,8 +57,8 @@ async function planWithAi(
   }
 
   const batches: FieldObservation[][] = []
-  for (let start = 0; start < observations.length; start += MAX_FIELDS_PER_AI_BATCH) {
-    batches.push(observations.slice(start, start + MAX_FIELDS_PER_AI_BATCH))
+  for (let start = 0; start < observations.length; start += batchSize) {
+    batches.push(observations.slice(start, start + batchSize))
   }
 
   sendLog('info', `字段较多（${observations.length} 个），分 ${batches.length} 批调用 AI 规划...`)
@@ -78,7 +83,19 @@ export async function buildFillPlan(
   observations: FieldObservation[],
   resumeProfile: Record<string, unknown>,
   modelId: string,
-  { sendLog, signal, onPhase }: { sendLog: SendLog; signal?: AbortSignal; onPhase?: EmitPhase }
+  {
+    sendLog,
+    signal,
+    onPhase,
+    batchSize = MAX_FIELDS_PER_AI_BATCH,
+    cacheMaxEntries,
+  }: {
+    sendLog: SendLog
+    signal?: AbortSignal
+    onPhase?: EmitPhase
+    batchSize?: number
+    cacheMaxEntries?: number
+  }
 ): Promise<PlanOutcome> {
   const fields = observations.map((observation) => observation.descriptor)
 
@@ -122,7 +139,7 @@ export async function buildFillPlan(
       sendLog('info', `[缓存] 未命中 reason="${cacheLookup.reason || '未知原因'}"`)
       sendLog('info', `已识别 ${remaining.length} 个待规划字段，正在调用 AI 制定填充计划...`)
 
-      aiDecisions = await planWithAi(remaining, resumeProfile, modelId, { sendLog, signal, onPhase })
+      aiDecisions = await planWithAi(remaining, resumeProfile, modelId, { sendLog, signal, onPhase, batchSize })
 
       // 写缓存：规则环与 AI 环的决策合并后统一落盘，下次整页重放
       const mergedForCache = [...ruleDecisions, ...aiDecisions].map((decision) => {
@@ -132,13 +149,18 @@ export async function buildFillPlan(
         return observation ? { ...decision, fieldKey: createFieldKey(observation.descriptor) } : decision
       })
 
-      await saveMappingCacheEntry(cacheKey, {
-        updatedAt: Date.now(),
-        decisions: mergedForCache,
-        host: location.host,
-        path: location.pathname,
-        signature: cacheSignature,
-      })
+      await saveMappingCacheEntry(
+        cacheKey,
+        {
+          updatedAt: Date.now(),
+          decisions: mergedForCache,
+          host: location.host,
+          path: location.pathname,
+          signature: cacheSignature,
+        },
+        undefined,
+        cacheMaxEntries ? { maxEntries: cacheMaxEntries } : undefined
+      )
 
       sendLog('success', '填充计划已生成，并已写入本地缓存。')
     }

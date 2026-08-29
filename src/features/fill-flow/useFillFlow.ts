@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 import { getActiveModel, isConfiguredModel } from '@/models/storage'
-import { MAPPING_CACHE_KEY, contentScriptHasDiagnosticsSupport } from '@/messaging/bridge'
+import { contentScriptHasDiagnosticsSupport } from '@/messaging/bridge'
 import type { FillFieldReport, StartFillResponse } from '@/messaging/bridge'
 import { hasAnyFilledField } from '@/resume/schema'
 import type { ResumeProfile } from '@/resume/schema'
@@ -240,12 +240,6 @@ export function useFillFlow({
     ]
   )
 
-  const clearMappingCache = useCallback(async () => {
-    await chrome.storage.local.remove(MAPPING_CACHE_KEY)
-    onLog('success', '字段映射缓存已清空')
-    setFillTip(null)
-  }, [onLog])
-
   /** 请求中止当前填充（content 侧逐字段检查 signal） */
   const cancelFill = useCallback(async () => {
     const tab = await getActiveTab()
@@ -254,5 +248,5 @@ export function useFillFlow({
     await sendTabMessage(tab.id, { action: 'cancelFill' }).catch(() => {})
   }, [onLog])
 
-  return { isFilling, runningAction, fillTip, fieldReport, runFill, cancelFill, clearMappingCache }
+  return { isFilling, runningAction, fillTip, fieldReport, runFill, cancelFill }
 }

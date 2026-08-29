@@ -204,12 +204,13 @@ async function waitForNewFields(startCount: number): Promise<boolean> {
 /** 返回点击的展开按钮数量 */
 export async function triggerExpandableSections(
   resumeProfile: Record<string, unknown>,
-  log: (message: string) => void = () => {}
+  log: (message: string) => void = () => {},
+  { maxRounds = DEEP_SCAN_MAX_ROUNDS }: { maxRounds?: number } = {}
 ): Promise<number> {
   const clickedElements = new WeakSet<Element>()
   let totalClicked = 0
 
-  for (let round = 0; round < DEEP_SCAN_MAX_ROUNDS && totalClicked < DEEP_SCAN_MAX_CLICKS; round += 1) {
+  for (let round = 0; round < maxRounds && totalClicked < DEEP_SCAN_MAX_CLICKS; round += 1) {
     const buttons = findDeepScanButtons(clickedElements, resumeProfile)
     if (buttons.length === 0) break
 

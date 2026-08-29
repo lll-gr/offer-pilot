@@ -1252,3 +1252,146 @@ body {
 .op-update-banner-close {
   padding: 2px;
 }
+
+/* 侧栏设置视图 */
+
+.op-settings-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+}
+
+.op-settings-nav {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--op-bg-inset);
+  border-radius: var(--op-radius-md);
+}
+
+.op-settings-nav-btn {
+  flex: 1;
+  padding: 7px 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--op-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--op-text-2);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.op-settings-nav-btn.active {
+  background: var(--op-bg-card);
+  color: var(--op-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.op-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--op-bg-card);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-lg);
+}
+
+.op-settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.op-settings-section-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--op-text-3);
+}
+
+.op-settings-link {
+  color: var(--op-accent);
+}
+
+.op-settings-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.op-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--op-border);
+}
+
+.op-settings-field:last-child {
+  border-bottom: none;
+}
+
+.op-settings-field-copy label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.op-settings-field-copy p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--op-text-3);
+}
+
+.op-settings-field-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.op-settings-field-input input {
+  width: 110px;
+  padding: 7px 10px;
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-radius-md);
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.op-settings-field-unit {
+  font-size: 11px;
+  color: var(--op-text-3);
+}
+
+.op-redline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.op-redline-item {
+  padding: 10px 12px;
+  border: 1px solid var(--op-border);
+  border-left: 3px solid var(--op-danger);
+  border-radius: var(--op-radius-md);
+  background: var(--op-bg);
+}
+
+.op-redline-item strong {
+  font-size: 12px;
+}
+
+.op-redline-item p {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--op-text-2);
+}

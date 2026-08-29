@@ -1,6 +1,7 @@
 import { defineBackground } from 'wxt/utils/define-background'
 
 import { callAI } from '@/ai/proxy'
+import { loadSettings } from '@/settings/storage'
 import type { CallAiResponse } from '@/messaging/bridge'
 import { isCallAiRequest } from '@/messaging/bridge'
 
@@ -13,7 +14,8 @@ export default defineBackground(() => {
       if (sender?.id && sender.id !== chrome.runtime.id) return
 
       const { modelId, prompt, mode } = request
-      callAI(modelId, prompt, mode)
+      loadSettings()
+        .then((settings) => callAI(modelId, prompt, mode, { requestTimeoutMs: settings.requestTimeoutMs }))
         .then((response) => sendResponse({ success: true, data: response }))
         .catch((error: Error) => sendResponse({ success: false, error: error?.message || String(error) }))
 

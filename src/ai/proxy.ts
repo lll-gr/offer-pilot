@@ -23,6 +23,8 @@ export interface CallAiDeps {
   getModelConfig?: typeof getModelConfig
   sleep?: (ms: number) => Promise<void>
   logError?: (message: string, detail: string) => void
+  /** 请求超时（应用设置注入，缺省走 chat.ts 默认 120s） */
+  requestTimeoutMs?: number
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -67,7 +69,7 @@ export async function callAI(
     messages,
   }
 
-  let response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
+  let response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal, deps.requestTimeoutMs)
 
   // 部分兼容接口不支持 JSON mode；识别后去掉该参数重试一次。
   if (response.status === 400) {
@@ -78,7 +80,7 @@ export async function callAI(
         temperature: 0.2,
         messages,
       }
-      response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
+      response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal, deps.requestTimeoutMs)
     } else {
       throw createApiError(response.status, errorText, logError)
     }
@@ -86,7 +88,7 @@ export async function callAI(
 
   if (RETRYABLE_STATUSES.has(response.status)) {
     await sleep(RETRY_DELAY_MS)
-    response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal)
+    response = await postChatCompletion(fetchImpl, url, headers, body, externalSignal, deps.requestTimeoutMs)
   }
 
   if (!response.ok) {
