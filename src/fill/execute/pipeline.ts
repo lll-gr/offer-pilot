@@ -44,6 +44,8 @@ export async function executePlan(
     onProgress,
     onFieldProgress,
     retryCount,
+    progressOffset = 0,
+    progressTotal,
   }: {
     fillMode: FillMode
     sendLog: SendLog
@@ -52,13 +54,17 @@ export async function executePlan(
     onProgress?: (filledCount: number) => void
     onFieldProgress?: (event: FieldProgressEvent) => void
     retryCount?: number
+    /** 进度基数（两段执行续接：pass2 从 pass1 已处理数起算） */
+    progressOffset?: number
+    /** 进度总数覆盖（缺省为本段字段数；两段执行传全量字段数避免进度条回跳） */
+    progressTotal?: number
   }
 ): Promise<ExecuteOutcome> {
   let filledCount = 0
-  let processedCount = 0
+  let processedCount = progressOffset
   const filledRuntimes: FieldRuntime[] = []
   const outcomes: FieldOutcome[] = []
-  const total = observations.length
+  const total = progressTotal ?? observations.length
 
   const fieldLabel = (observation: FieldObservation): string =>
     observation.descriptor.label || observation.descriptor.fieldId

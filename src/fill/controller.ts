@@ -8,7 +8,7 @@ import { CONTENT_SCRIPT_VERSION } from '@/messaging/bridge'
 import type { CollectFilledFieldsResponse, FillFieldReport, StartFillResponse } from '@/messaging/bridge'
 import type { FilledFieldSnapshot } from '@/messaging/bridge'
 import type { FieldProgressEvent, FillEvent, PhaseEvent } from '@/messaging/events'
-import { formatFieldSummary, formatMappingSummary } from '@/logs/diagnostics'
+import { formatFieldSummary } from '@/logs/diagnostics'
 import { normalizeResumeProfile } from '@/resume/schema'
 import { loadSettings } from '@/settings/storage'
 import { triggerExpandableSections } from './deep-scan'
@@ -18,13 +18,12 @@ import {
   applyDecisionCorrection,
   createFieldKey,
   createMappingCacheKeyFromSignature,
-  createMappingCacheSignature,
   loadMappingCacheEntry,
   saveMappingCacheEntry,
 } from './plan/cache'
-import { buildFillPlan } from './plan/build'
+import type { CacheFieldSignature } from './plan/cache'
 import { applyDecisionRules } from './plan/rules'
-import { executePlan } from './execute/pipeline'
+import { runPlanExecute } from './plan-execute'
 import type { SendLog, SendStats } from './execute/pipeline'
 import { requestSelectionRect } from './selection'
 import { scanFields } from './scanner/fields'
@@ -48,7 +47,7 @@ interface FillSessionState {
     /** fieldId → 字段指纹（写回缓存对齐用，替代保存全量 descriptor） */
     fieldKeys: Map<string, string>
     /** 缓存重算原料（fields 签名），仅在纠错时用于重建 cache key */
-    cacheSignature: ReturnType<typeof createMappingCacheSignature>
+    cacheSignature: CacheFieldSignature[]
     /** 纠错预览：fieldId → 本地防线求值所需的最小观察快照 */
     observationSnapshots: Map<string, FieldObservation>
   } | null
@@ -309,58 +308,46 @@ export async function handleStartFill(
       })
     }
 
-    // --- 规划：先查缓存，未命中调 AI（含五动作决策） ---
-    const cacheSignature = createMappingCacheSignature(scan.fields)
-    const { plan, cacheHit } = await buildFillPlan(observations, resumeProfile, modelId, {
+    // --- 规划与执行（两段：规则命中先填，剩余走缓存/AI） ---
+    sendLog(
+      'info',
+      fillMode === 'incremental' ? '开始增量填充：确定字段直接填入，其余由缓存/AI 规划...' : '开始填充：确定字段直接填入，其余由缓存/AI 规划...',
+    )
+
+    let filledSoFar = 0
+    let mappedSoFar = 0
+
+    const result = await runPlanExecute(observations, resumeProfile, modelId, {
+      fillMode: fillMode === 'incremental' ? 'incremental' : 'overwrite',
       sendLog,
       signal: abort.signal,
       onPhase: sendPhase,
+      onFieldProgress: sendFieldProgress,
+      retryCount: settings.fillRetryCount,
       batchSize: settings.aiBatchSize,
       cacheMaxEntries: settings.cacheMaxEntries,
+      onMapped: (mappedCount) => {
+        mappedSoFar = mappedCount
+        sendStats(scan.fields.length, mappedCount, filledSoFar)
+      },
+      onProgress: (filledCount) => {
+        filledSoFar = filledCount
+        sendStats(scan.fields.length, mappedSoFar, filledCount)
+      },
     })
+
     session.plan = {
       fields: scan.fields.map((field) => ({ fieldId: field.fieldId, label: field.label || field.fieldId })),
-      decisions: plan,
+      decisions: result.plan,
       fieldKeys: new Map(scan.fields.map((field) => [field.fieldId, createFieldKey(field)])),
-      cacheSignature,
+      cacheSignature: result.cacheSignature,
       observationSnapshots: new Map(
         observations.map((observation) => [observation.descriptor.fieldId, observation]),
       ),
     }
 
-    const decisionMap = decisionsById(plan)
-    for (const observation of observations) {
-      const decision = decisionMap.get(observation.descriptor.fieldId) || {
-        fieldId: observation.descriptor.fieldId,
-        action: 'skip' as const,
-        resumePath: '',
-        reason: '未返回决策结果',
-        transform: { type: 'none' as const },
-      }
-      sendLog(
-        decision.resumePath || decision.action !== 'skip' ? 'info' : 'warning',
-        formatMappingSummary(observation.descriptor, decision, { source: cacheHit ? 'cache' : 'ai' }),
-      )
-    }
-
-    const mappedCount = plan.filter((decision) => Boolean(String(decision.resumePath || '').trim())).length
-
-    sendStats(scan.fields.length, mappedCount, 0)
-    sendLog(
-      'info',
-      fillMode === 'incremental' ? '开始根据填充计划执行增量填充...' : '开始根据填充计划执行本地填充...',
-    )
-
-    // --- 逐字段执行 ---
-    sendPhase({ type: 'phase', phase: 'executing' })
-    const outcome = await executePlan(observations, decisionMap, resumeProfile, {
-      fillMode: fillMode === 'incremental' ? 'incremental' : 'overwrite',
-      sendLog,
-      signal: abort.signal,
-      onFieldProgress: sendFieldProgress,
-      retryCount: settings.fillRetryCount,
-      onProgress: (filledCount) => sendStats(scan.fields.length, mappedCount, filledCount),
-    })
+    const mappedCount = result.plan.filter((decision) => Boolean(String(decision.resumePath || '').trim())).length
+    const outcome = { filledCount: result.filledCount, filledRuntimes: result.filledRuntimes, outcomes: result.outcomes }
 
     if (outcome.filledRuntimes.length > 0) {
       showFieldHighlights(outcome.filledRuntimes)
@@ -372,7 +359,7 @@ export async function handleStartFill(
       canceled ? 'warning' : 'success',
       canceled
         ? `已停止：映射 ${mappedCount}/${scan.fields.length} 个字段，停止前已填充 ${outcome.filledCount} 个。`
-        : `填充完成：映射 ${mappedCount}/${scan.fields.length} 个字段，成功填充 ${outcome.filledCount} 个。请检查后手动提交。`,
+        : `填充完成：映射 ${mappedCount}/${scan.fields.length} 个字段，成功填充 ${outcome.filledCount} 个（其中 ${result.ruleDecidedCount} 个由本地规则直接命中）。请检查后手动提交。`,
     )
 
     const manualCount = outcome.outcomes.filter((item) => item.outcome === 'manual').length
@@ -387,7 +374,7 @@ export async function handleStartFill(
       fieldCount: scan.fields.length,
       mappedCount,
       filledCount: outcome.filledCount,
-      cacheHit,
+      cacheHit: result.cacheHit,
       fieldReport: buildFieldReport(outcome.outcomes, observations),
     }
   } catch (error) {
@@ -396,10 +383,6 @@ export async function handleStartFill(
     session.isWorking = false
     session.abort = null
   }
-}
-
-function decisionsById(plan: FieldDecision[]): Map<string, FieldDecision> {
-  return new Map(plan.map((decision) => [decision.fieldId, decision]))
 }
 
 /**

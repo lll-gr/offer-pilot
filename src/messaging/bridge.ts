@@ -5,7 +5,7 @@
  */
 
 /** content script 版本：content 侧行为变更时 bump，旧脚本 ping 会被判为过期 */
-export const CONTENT_SCRIPT_VERSION = '2026-08-30-offer-pilot-v5'
+export const CONTENT_SCRIPT_VERSION = '2026-08-30-offer-pilot-v6'
 
 /** 字段映射缓存的 storage key（popup 清理按钮与 content 读写共用） */
 export const MAPPING_CACHE_KEY = 'fieldMappingCacheV3'

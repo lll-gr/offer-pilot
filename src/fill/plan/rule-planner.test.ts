@@ -109,3 +109,76 @@ describe('planByRules', () => {
     expect(remaining).toHaveLength(2)
   })
 })
+
+describe('planByRules label matching', () => {
+  const PROFILE = normalizeResumeProfile({
+    personal: { fullName: '张三', email: 'zhang@example.com', phoneNumber: '13800138000', gender: '男', wechatId: 'zs_wx' },
+  })
+
+  it('matches Chinese labels exactly after cleanup', () => {
+    const { decisions, remaining } = planByRules(
+      [
+        observation({ fieldId: 'f_1', label: '姓名' }),
+        observation({ fieldId: 'f_2', label: '邮箱 *' }),
+        observation({ fieldId: 'f_3', label: '请输入手机号码' }),
+        observation({ fieldId: 'f_4', label: '微信号：' }),
+      ],
+      PROFILE,
+    )
+
+    expect(remaining).toHaveLength(0)
+    expect(decisions.map((item) => item.resumePath)).toEqual([
+      'personal.fullName',
+      'personal.email',
+      'personal.phoneNumber',
+      'personal.wechatId',
+    ])
+    expect(decisions.every((item) => item.confidence === 'high')).toBe(true)
+  })
+
+  it('never matches by substring: 紧急联系人姓名 falls through to AI', () => {
+    const { decisions, remaining } = planByRules(
+      [observation({ fieldId: 'f_1', label: '紧急联系人姓名' }), observation({ fieldId: 'f_2', label: '联系人电话' })],
+      PROFILE,
+    )
+    expect(decisions).toHaveLength(0)
+    expect(remaining).toHaveLength(2)
+  })
+
+  it('matches gender select only when an option matches the profile value', () => {
+    const { decisions } = planByRules(
+      [observation({ fieldId: 'f_1', kind: 'select', label: '性别', options: ['', '男', '女'] })],
+      PROFILE,
+    )
+    expect(decisions).toHaveLength(1)
+    expect(decisions[0].resumePath).toBe('personal.gender')
+  })
+
+  it('falls back to AI when select options are semantically unrelated', () => {
+    const { decisions, remaining } = planByRules(
+      [observation({ fieldId: 'f_1', kind: 'select', label: '性别', options: ['', '选项A', '选项B'] })],
+      PROFILE,
+    )
+    expect(decisions).toHaveLength(0)
+    expect(remaining).toHaveLength(1)
+  })
+
+  it('falls back to AI when the profile field has no value', () => {
+    const emptyProfile = normalizeResumeProfile({ personal: { fullName: '张三' } })
+    const { decisions, remaining } = planByRules(
+      [observation({ fieldId: 'f_1', label: '邮箱' })],
+      emptyProfile,
+    )
+    expect(decisions).toHaveLength(0)
+    expect(remaining).toHaveLength(1)
+  })
+
+  it('excludes kinds not whitelisted by any label rule (checkbox_group)', () => {
+    const { decisions, remaining } = planByRules(
+      [observation({ fieldId: 'f_1', kind: 'checkbox_group', label: '性别', options: ['男', '女'] })],
+      PROFILE,
+    )
+    expect(decisions).toHaveLength(0)
+    expect(remaining).toHaveLength(1)
+  })
+})

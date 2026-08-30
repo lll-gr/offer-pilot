@@ -1,38 +1,24 @@
 /**
- * 规划编排（责任链）：规则环（autocomplete 确定性）→ 缓存/AI 环 → 本地防线。
- * 规则命中的字段不再进入 AI 载荷（省 token）；AI 环字段数超阈值时分批调用。
- * 主流程与分块流程的每块复用，不含编排状态；执行见 execute/pipeline.ts。
+ * AI 规划环：剩余字段（规则环未命中）分批调用 AI 产出决策。
+ * 缓存编排与两段执行见 plan-execute.ts；本地防线见 rules.ts。
  */
 
-import { callAI } from '@/ai/client'
+import { callAI as defaultCallAI } from '@/ai/client'
 import { parseJsonFromAiText } from '@/ai/json'
 import type { PhaseEvent } from '@/messaging/events'
 import type { SendLog } from '../execute/pipeline'
 import type { FieldDecision, FieldObservation } from '../types'
-import {
-  alignCachedDecisions,
-  createFieldKey,
-  createMappingCacheKeyFromSignature,
-  createMappingCacheSignature,
-  loadMappingCacheEntry,
-  saveMappingCacheEntry,
-} from './cache'
 import { buildFieldPlanningPayload, normalizeDecisions } from './payload'
-import { planByRules } from './rule-planner'
-import { refinePlan } from './rules'
 
-export interface PlanOutcome {
-  plan: FieldDecision[]
-  cacheHit: boolean
-}
+export type CallAiFn = typeof defaultCallAI
 
 /** 规划阶段事件出口（阶段视图/aiBatch 批次进度） */
 export type EmitPhase = (event: PhaseEvent) => void
 
 /** 单次 AI 规划调用的字段数上限（超限分批，防小上下文模型截断） */
-const MAX_FIELDS_PER_AI_BATCH = 30
+export const MAX_FIELDS_PER_AI_BATCH = 30
 
-async function planWithAi(
+export async function planWithAi(
   observations: FieldObservation[],
   resumeProfile: Record<string, unknown>,
   modelId: string,
@@ -41,19 +27,33 @@ async function planWithAi(
     signal,
     onPhase,
     batchSize = MAX_FIELDS_PER_AI_BATCH,
-  }: { sendLog: SendLog; signal?: AbortSignal; onPhase?: EmitPhase; batchSize?: number }
+    callAi = defaultCallAI,
+    payloadMeta,
+  }: {
+    sendLog: SendLog
+    signal?: AbortSignal
+    onPhase?: EmitPhase
+    batchSize?: number
+    /** 测试注入；缺省走 background 代理的 chrome 消息实现 */
+    callAi?: CallAiFn
+    /** 载荷的 url/title 来源（缺省 location/document，测试可注入） */
+    payloadMeta?: { url: string; title: string }
+  }
 ): Promise<FieldDecision[]> {
   if (observations.length === 0) return []
 
+  const meta = payloadMeta ?? { url: location.href, title: document.title }
+
+  const planBatch = async (batch: FieldObservation[]): Promise<FieldDecision[]> => {
+    const promptPayload = buildFieldPlanningPayload(batch, resumeProfile, meta)
+    const aiText = await callAi(modelId, JSON.stringify(promptPayload), 'form_planning', { signal })
+    const parsed = parseJsonFromAiText(aiText) as { decisions?: unknown; mappings?: unknown }
+    return normalizeDecisions(parsed?.decisions ?? parsed?.mappings, batch)
+  }
+
   if (observations.length <= batchSize) {
     onPhase?.({ type: 'phase', phase: 'aiBatch', batch: 1, batches: 1 })
-    const promptPayload = buildFieldPlanningPayload(observations, resumeProfile, {
-      url: location.href,
-      title: document.title,
-    })
-    const aiText = await callAI(modelId, JSON.stringify(promptPayload), 'form_planning', { signal })
-    const parsed = parseJsonFromAiText(aiText) as { decisions?: unknown; mappings?: unknown }
-    return normalizeDecisions(parsed?.decisions ?? parsed?.mappings, observations)
+    return planBatch(observations)
   }
 
   const batches: FieldObservation[][] = []
@@ -67,106 +67,8 @@ async function planWithAi(
   for (const [index, batch] of batches.entries()) {
     onPhase?.({ type: 'phase', phase: 'aiBatch', batch: index + 1, batches: batches.length })
     sendLog('info', `AI 规划批次 ${index + 1}/${batches.length}（${batch.length} 个字段）...`)
-    const promptPayload = buildFieldPlanningPayload(batch, resumeProfile, {
-      url: location.href,
-      title: document.title,
-    })
-    const aiText = await callAI(modelId, JSON.stringify(promptPayload), 'form_planning', { signal })
-    const parsed = parseJsonFromAiText(aiText) as { decisions?: unknown; mappings?: unknown }
-    decisions.push(...normalizeDecisions(parsed?.decisions ?? parsed?.mappings, batch))
+    decisions.push(...(await planBatch(batch)))
   }
 
   return decisions
-}
-
-export async function buildFillPlan(
-  observations: FieldObservation[],
-  resumeProfile: Record<string, unknown>,
-  modelId: string,
-  {
-    sendLog,
-    signal,
-    onPhase,
-    batchSize = MAX_FIELDS_PER_AI_BATCH,
-    cacheMaxEntries,
-  }: {
-    sendLog: SendLog
-    signal?: AbortSignal
-    onPhase?: EmitPhase
-    batchSize?: number
-    cacheMaxEntries?: number
-  }
-): Promise<PlanOutcome> {
-  const fields = observations.map((observation) => observation.descriptor)
-
-  onPhase?.({ type: 'phase', phase: 'planning' })
-
-  // --- 责任链第一环：规则规划（确定性，零 token） ---
-  const { decisions: ruleDecisions, remaining } = planByRules(observations, resumeProfile)
-  if (ruleDecisions.length > 0) {
-    sendLog('info', `规则环确定性命中 ${ruleDecisions.length} 个字段（autocomplete/name），跳过 AI。`)
-  }
-
-  let aiDecisions: FieldDecision[] = []
-  let cacheHit = false
-
-  // --- 责任链第二环：缓存/AI（仅处理规则未命中的字段） ---
-  if (remaining.length > 0) {
-    const remainingFields = remaining.map((observation) => observation.descriptor)
-    const cacheSignature = createMappingCacheSignature(fields)
-    const cacheKey = createMappingCacheKeyFromSignature(cacheSignature, {
-      origin: location.origin,
-      pathname: location.pathname,
-      host: location.host,
-    })
-
-    const cacheLookup = await loadMappingCacheEntry(cacheKey, {
-      host: location.host,
-      path: location.pathname,
-      signature: cacheSignature,
-    })
-
-    if (cacheLookup.entry?.decisions?.length) {
-      // 重放对齐：按字段指纹把缓存决策安到当前扫描字段（序号无关），再过本地防线
-      const aligned = alignCachedDecisions(cacheLookup.entry.decisions, remainingFields)
-      aiDecisions = normalizeDecisions(aligned, remaining)
-      cacheHit = true
-      sendLog(
-        'info',
-        `已命中本地填表决策缓存（${aiDecisions.length}/${cacheLookup.entry.decisions.length} 条按指纹对齐），跳过模型调用。`,
-      )
-    } else {
-      sendLog('info', `[缓存] 未命中 reason="${cacheLookup.reason || '未知原因'}"`)
-      sendLog('info', `已识别 ${remaining.length} 个待规划字段，正在调用 AI 制定填充计划...`)
-
-      aiDecisions = await planWithAi(remaining, resumeProfile, modelId, { sendLog, signal, onPhase, batchSize })
-
-      // 写缓存：规则环与 AI 环的决策合并后统一落盘，下次整页重放
-      const mergedForCache = [...ruleDecisions, ...aiDecisions].map((decision) => {
-        const observation = observations.find(
-          (item) => item.descriptor.fieldId === decision.fieldId,
-        )
-        return observation ? { ...decision, fieldKey: createFieldKey(observation.descriptor) } : decision
-      })
-
-      await saveMappingCacheEntry(
-        cacheKey,
-        {
-          updatedAt: Date.now(),
-          decisions: mergedForCache,
-          host: location.host,
-          path: location.pathname,
-          signature: cacheSignature,
-        },
-        undefined,
-        cacheMaxEntries ? { maxEntries: cacheMaxEntries } : undefined
-      )
-
-      sendLog('success', '填充计划已生成，并已写入本地缓存。')
-    }
-  }
-
-  // --- 责任链第三环：本地防线（矛盾纠正/敏感降级/低置信度降级） ---
-  const plan = refinePlan([...ruleDecisions, ...aiDecisions], observations)
-  return { plan, cacheHit }
 }

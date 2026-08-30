@@ -8,8 +8,7 @@ import type { FieldProgressEvent, PhaseEvent } from '@/messaging/events'
 import { decideAdvance } from './advance-deciders'
 import { scheduleHighlightAutoClear, showFieldHighlights } from './highlight'
 import { observeFields } from './observe'
-import { buildFillPlan } from './plan/build'
-import { executePlan } from './execute/pipeline'
+import { runPlanExecute } from './plan-execute'
 import type { SendLog, SendStats } from './execute/pipeline'
 import { scanFields } from './scanner/fields'
 import type { FieldOutcome, ScanResult } from './types'
@@ -110,28 +109,23 @@ export async function runSegmentedFill(
           observation.descriptor.label || observation.descriptor.fieldId,
         )
       }
-      const { plan } = await buildFillPlan(segmentObservations, resumeProfile, modelId, {
-        sendLog,
-        signal,
-        onPhase,
-        batchSize,
-      })
-      totalMapped += plan.filter((decision) => Boolean(decision.resumePath?.trim())).length
-
-      const decisionById = new Map(plan.map((decision) => [decision.fieldId, decision]))
-      onPhase?.({ type: 'phase', phase: 'executing' })
-      const outcome = await executePlan(segmentObservations, decisionById, resumeProfile, {
+      const segmentResult = await runPlanExecute(segmentObservations, resumeProfile, modelId, {
         fillMode: 'overwrite',
         sendLog,
         signal,
+        onPhase,
         onFieldProgress,
+        retryCount,
+        batchSize,
       })
-      totalFilled += outcome.filledCount
-      fieldReport.push(...collectSegmentReport(outcome.outcomes, labelById))
+      // 本块的映射/填充数累加进全局统计（onMapped/onProgress 不接，块级无需中途上报）
+      totalMapped += segmentResult.plan.filter((decision) => Boolean(decision.resumePath?.trim())).length
+      totalFilled += segmentResult.filledCount
+      fieldReport.push(...collectSegmentReport(segmentResult.outcomes, labelById))
       segmentFields.forEach((field) => filledFieldIds.add(field.fieldId))
 
-      if (outcome.filledRuntimes.length > 0) {
-        showFieldHighlights(outcome.filledRuntimes)
+      if (segmentResult.filledRuntimes.length > 0) {
+        showFieldHighlights(segmentResult.filledRuntimes)
       }
     }
 
