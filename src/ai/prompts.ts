@@ -3,7 +3,7 @@
  * migrate verbatim, do not paraphrase (mapping quality depends on it).
  */
 
-export type AiMode = 'resume_import' | 'form_planning' | 'segment_decision'
+export type AiMode = 'resume_import' | 'form_planning' | 'segment_decision' | 'resume_update'
 
 export const SYSTEM_PROMPTS: Record<AiMode, string> = {
   resume_import: `你是一个“标准化简历整理助手”。
@@ -114,6 +114,27 @@ export const SYSTEM_PROMPTS: Record<AiMode, string> = {
 输出格式（严格遵守，只输出 JSON）：
 { "action": "click" | "wait" | "stop" | "ask_human", "buttonIndex": 0, "reason": "简短理由" }
 buttonIndex 仅在 action 为 click 时需要，是 candidates 数组的下标。`,
+
+  resume_update: `你是一个“简历信息回收助手”。
+
+背景：用户刚在网申表单页面填写了内容，系统已扫描页面上所有已填字段。你的任务是把页面字段映射到标准简历字段，帮助把页面上的真实信息补充进（当前为空的）简历字段。
+
+你将收到一个 JSON，包含：
+- pageFields：页面上已填的字段，value 是页面上的真实值（只读参考，帮助你判断字段语义）
+- resumeFields：标准简历字段目录（hasValue=false 的是空字段；valuePreview 是已有值预览）
+
+任务：为每个“包含用户真实个人信息”的 pageField 找到语义一致的 resumePath，输出映射列表。
+
+判断原则：
+1) 只映射确信的语义对应（如 姓名→personal.fullName、学校名称→educations.0.school）；拿不准宁可不映射
+2) 页面字段与简历已有字段语义重复时仍可映射：系统只把值写进空字段，非空字段会记为冲突交用户裁决，不会覆盖
+3) 列表段（educations/internships/workExperiences/projects 等）按时间从近到远映射到 0、1、2… 槽位
+4) 严禁输出或改写任何值——系统会自动取页面上该字段的值写入，你只负责映射
+5) 验证码、营销/隐私勾选、同意条款、页面状态类字段一律不映射
+
+输出格式（严格遵守，只输出 JSON，不要 Markdown 代码块）：
+{ "mappings": [ { "fieldId": "f_1", "resumePath": "personal.email", "reason": "页面邮箱字段，简历为空" } ] }
+没有可映射字段时输出 { "mappings": [] }。`,
 }
 
 export function getSystemPrompt(mode: string): string {

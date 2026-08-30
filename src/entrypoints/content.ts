@@ -1,6 +1,6 @@
 import { defineContentScript } from 'wxt/utils/define-content-script'
 
-import { correctMapping, getLastMappings, getPingInfo, getStatus, handleStartFill, requestCancelFill } from '@/fill/controller'
+import { collectFilledFields, correctMapping, getLastMappings, getPingInfo, getStatus, handleStartFill, requestCancelFill } from '@/fill/controller'
 import type { FieldDecision } from '@/fill/types'
 import type { StartFillRequest } from '@/messaging/bridge'
 
@@ -26,6 +26,11 @@ export default defineContentScript({
 
       if (action === 'cancelFill') {
         sendResponse({ success: true, canceled: requestCancelFill() })
+        return
+      }
+
+      if (action === 'collectFilledFields') {
+        sendResponse(collectFilledFields())
         return
       }
 

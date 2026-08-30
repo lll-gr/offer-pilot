@@ -13,6 +13,7 @@ import { useFillFlow } from '@/features/fill-flow/useFillFlow'
 import type { FillActionKey } from '@/features/fill-flow/useFillFlow'
 import { ResumeSummaryGrid } from '@/features/resume-editor/ResumeSummaryGrid'
 import { SlotBar } from '@/features/resume-editor/SlotBar'
+import { useResumeBackfill } from '@/features/resume-editor/useResumeBackfill'
 import { useResumeSlots } from '@/features/resume-editor/useResumeSlots'
 import { useModels } from '@/features/model-settings/useModels'
 import { SettingsPanel } from '@/features/model-settings/SettingsPanel'
@@ -79,6 +80,14 @@ export function SidepanelApp() {
     onRequireSettings: () => setView({ name: 'settings' }),
   })
 
+  const resumeBackfill = useResumeBackfill({
+    profile: resumeApi.profile,
+    onLog: fillEvents.addLog,
+    onStatus: updateStatus,
+    saveProfile: (nextProfile) => resumeApi.saveActive(nextProfile, resumeApi.rawText),
+    onRequireSettings: () => setView({ name: 'settings' }),
+  })
+
   const hasResumeData = hasAnyFilledField(resumeApi.profile)
 
   // 模型未就绪（无模型或激活模型缺 key）：填充页顶部引导条
@@ -137,10 +146,12 @@ export function SidepanelApp() {
               isFilling={fillFlow.isFilling}
               runningAction={fillFlow.runningAction}
               fillTip={fillFlow.fillTip}
+              isBackfilling={resumeBackfill.isBackfilling}
               onRun={(actionKey: FillActionKey) => void fillFlow.runFill(actionKey)}
               onClearCache={() => setView({ name: 'settings' })}
               onCancel={() => void fillFlow.cancelFill()}
               onRequireResume={() => setView({ name: 'resume' })}
+              onBackfill={() => void resumeBackfill.runBackfill()}
             />
             {fillFlow.isFilling ? (
               <FillProgressPanel progress={fillEvents.progress} />

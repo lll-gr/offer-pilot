@@ -5,14 +5,15 @@
  */
 
 import { CONTENT_SCRIPT_VERSION } from '@/messaging/bridge'
-import type { FillFieldReport, StartFillResponse } from '@/messaging/bridge'
+import type { CollectFilledFieldsResponse, FillFieldReport, StartFillResponse } from '@/messaging/bridge'
+import type { FilledFieldSnapshot } from '@/messaging/bridge'
 import type { FieldProgressEvent, FillEvent, PhaseEvent } from '@/messaging/events'
 import { formatFieldSummary, formatMappingSummary } from '@/logs/diagnostics'
 import { normalizeResumeProfile } from '@/resume/schema'
 import { loadSettings } from '@/settings/storage'
 import { triggerExpandableSections } from './deep-scan'
 import { clearFieldHighlights, scheduleHighlightAutoClear, showFieldHighlights } from './highlight'
-import { observeFields } from './observe'
+import { observeFields, readFieldValuePreview } from './observe'
 import {
   applyDecisionCorrection,
   createFieldKey,
@@ -162,6 +163,32 @@ function emitViaRuntime(event: FillEvent): void {
 
 export function getStatus(): { fieldCount: number; mappedCount: number; filledCount: number } {
   return { fieldCount: session.fieldCount, mappedCount: session.mappedCount, filledCount: session.filledCount }
+}
+
+/** 页面回填简历：扫描当前页面全部字段，返回带真实已填值的可序列化快照（不做任何决策） */
+export function collectFilledFields(): CollectFilledFieldsResponse {
+  const scan = scanFields({ scope: 'page' })
+  const runtimeMap = new Map(scan.runtime.map((runtime) => [runtime.fieldId, runtime]))
+
+  const fields: FilledFieldSnapshot[] = []
+  for (const field of scan.fields) {
+    const value = readFieldValuePreview(runtimeMap.get(field.fieldId)).trim()
+    if (!value) continue
+
+    fields.push({
+      fieldId: field.fieldId,
+      kind: field.kind,
+      label: field.label,
+      placeholder: field.placeholder,
+      context: field.context,
+      sectionLabel: field.sectionLabel,
+      nearbyLabels: field.nearbyLabels,
+      options: field.options,
+      value: value.slice(0, 2000),
+    })
+  }
+
+  return { success: true, fields }
 }
 
 export function getPingInfo(): { version: string; capabilities: { fullDiagnostics: boolean } } {

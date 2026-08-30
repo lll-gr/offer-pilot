@@ -33,6 +33,8 @@ export interface CustomSelectDom {
   pressEscape(el: HTMLElement): void
   typeText(el: HTMLElement, text: string): void
   sleep(ms: number): Promise<void>
+  /** 收起仍展开的下拉：部分组件不响应 Escape，需在组件外部派发点击兜底 */
+  clickOutside?(): void
 }
 
 function isVisibleLike(el: Element | null | undefined): boolean {
@@ -110,6 +112,14 @@ export const BROWSER_CUSTOM_SELECT_DOM: CustomSelectDom = {
     setInputValue(el, text)
     el.dispatchEvent(new Event('input', { bubbles: true }))
   },
+  clickOutside() {
+    const target = typeof document !== 'undefined' ? document.body : null
+    if (!target) return
+    // mousedown/click 各派发一次：不同组件库监听的事件不一致
+    for (const type of ['mousedown', 'mouseup', 'click'] as const) {
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }))
+    }
+  },
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms))
   },
@@ -150,6 +160,20 @@ function displayMatches(displayed: string, desired: string): boolean {
   return getMatchScore(displayed, desired) >= 60
 }
 
+/** 填后收起仍展开的下拉：Escape 无效的组件（常见于自研 UI 库）用外部点击兜底 */
+async function ensureCollapsed(dom: CustomSelectDom, el: HTMLElement): Promise<void> {
+  try {
+    if (dom.findOptions().length === 0) return
+    dom.pressEscape(el)
+    await dom.sleep(150)
+    if (dom.findOptions().length === 0) return
+    dom.clickOutside?.()
+    await dom.sleep(150)
+  } catch {
+    // Ignore.
+  }
+}
+
 /** 填充自定义下拉：三级回退，最终读回不一致时抛 FillVerificationError 交由 withRetry 重试 */
 export async function fillCustomSelect(
   runtime: FieldRuntime,
@@ -165,7 +189,6 @@ export async function fillCustomSelect(
     : String(value ?? '').trim()
   if (!desired) return { filled: false, message: '没有可填写内容' }
 
-  let settled = false
   try {
     // 层级一：点开下拉 → 找最佳匹配选项点击
     await dom.openDropdown(el)
@@ -174,10 +197,10 @@ export async function fillCustomSelect(
 
     if (best) {
       await dom.clickOption(best.el)
-      await dom.sleep(200)
+      // 组件库选中态渲染有动画延迟，读太快会误判失败而走输入回退
+      await dom.sleep(300)
       const displayed = readCustomSelectDisplay(el)
       if (displayMatches(displayed, desired)) {
-        settled = true
         return { filled: true, verified: true }
       }
       logger?.(`自定义下拉点击「${best.label}」后读回为「${displayed || '空'}」，尝试回退方案`)
@@ -191,7 +214,6 @@ export async function fillCustomSelect(
       await dom.sleep(200)
       const displayed = readCustomSelectDisplay(el)
       if (displayMatches(displayed, desired)) {
-        settled = true
         return { filled: true, verified: true }
       }
     }
@@ -204,13 +226,7 @@ export async function fillCustomSelect(
       actual: `${displayed || '未选中'}${noOptionsNote}`,
     })
   } finally {
-    if (!settled) {
-      // 失败路径兜底收起下拉（多选/搜索态可能未自动关闭；成功路径组件会自关）
-      try {
-        dom.pressEscape(el)
-      } catch {
-        // Ignore.
-      }
-    }
+    // 成功路径组件通常自关；仍展开时（含失败路径）主动收起
+    await ensureCollapsed(dom, el)
   }
 }

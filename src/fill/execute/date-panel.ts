@@ -5,6 +5,7 @@
 
 import type { FieldRuntime } from '../types'
 import { normalizeFieldText } from '../scanner/field-text'
+import { normalizeDateValue } from '@/resume/schema'
 import { matchesWrittenValue } from './runtime'
 import { clickLikeUser, setValueWithEvents, scrollIntoView } from './dom'
 
@@ -42,42 +43,74 @@ export function parseDateParts(value: string): { year: number; month: number; da
   }
 }
 
+/** 面板候选选择器：覆盖常见组件库（picker/calendar/datepicker）与自研容器（dropdown/popup） */
+const DATE_PANEL_SELECTOR = [
+  '[class*="picker"]',
+  '[class*="Picker"]',
+  '[class*="calendar"]',
+  '[class*="Calendar"]',
+  '[class*="datepicker"]',
+  '[class*="DatePicker"]',
+  '[class*="dropdown"]',
+  '[class*="Dropdown"]',
+  '[class*="popup"]',
+  '[class*="Popup"]',
+  '[role="dialog"]',
+].join(',')
+
+const MONTH_TEXT_PATTERN = /\d{4}年|1月|2月|3月|4月|5月|6月|7月|8月|9月|10月|11月|12月/
+
+/** 日格数量：内嵌式面板（包含输入框本体）必须有足够日期格才认定，防把表单容器误判成面板 */
+function countDayCells(node: Element): number {
+  return Array.from(node.querySelectorAll('td,li,button,span,div')).filter((cell) => {
+    if (cell.children.length > 0) return false
+    return /^(?:[1-9]|[12]\d|3[01])$/.test(normalizeFieldText(cell.textContent || ''))
+  }).length
+}
+
 export function findVisibleDatePanel(anchorEl: Element | null): Element | null {
-  const candidates = Array.from(
-    document.querySelectorAll(
-      '[class*="picker"],[class*="Picker"],[class*="calendar"],[class*="Calendar"],[role="dialog"]',
-    ),
-  ).filter((node) => {
-    if (node.contains?.(anchorEl as Node)) return false
+  const nodes = Array.from(document.querySelectorAll(DATE_PANEL_SELECTOR)).filter((node) => {
     if (!isVisible(node)) return false
     const text = normalizeFieldText(node.textContent || '')
-    return /\d{4}年|1月|2月|3月|4月|5月|6月|7月|8月|9月|10月|11月|12月/.test(text)
+    return MONTH_TEXT_PATTERN.test(text)
   })
 
-  if (candidates.length === 0) return null
-  if (!anchorEl) return candidates[0]
+  const containsAnchor = (node: Element) =>
+    Boolean(anchorEl && typeof node.contains === 'function' && node.contains(anchorEl as Node))
+  const outside = nodes.filter((node) => !containsAnchor(node))
+  // portal 式面板不含输入框；内嵌式面板包住输入框，要求带日期格才算
+  const inside = nodes.filter((node) => containsAnchor(node) && countDayCells(node) >= 5)
+
+  const pool = outside.length > 0 ? outside : inside
+  if (pool.length === 0) return null
+  if (!anchorEl) return pool[0]
 
   const anchorRect = anchorEl.getBoundingClientRect()
   return (
-    candidates
+    pool
       .map((node) => {
         const rect = node.getBoundingClientRect()
         const dx = rect.left - anchorRect.left
         const dy = rect.top - anchorRect.bottom
         return { node, distance: Math.abs(dx) + Math.abs(dy) }
       })
-      .sort((left, right) => left.distance - right.distance)[0]?.node || candidates[0]
+      .sort((left, right) => left.distance - right.distance)[0]?.node || pool[0]
   )
 }
 
+/** 面板文本 → 年份：「2020年」「2020年8月」或年份下拉里的纯「2020」 */
+export function matchYearText(text: string): number | null {
+  const normalized = normalizeFieldText(text)
+  const withUnit = normalized.match(/^(\d{4})\s*年/)
+  if (withUnit) return Number(withUnit[1])
+  if (/^\d{4}$/.test(normalized)) return Number(normalized)
+  return null
+}
+
 function getVisiblePickerYear(panel: Element): number {
-  const nodes = Array.from(panel.querySelectorAll('*'))
-  for (const node of nodes) {
-    const text = normalizeFieldText(node.textContent || '')
-    const match = text.match(/^(\d{4})年$/)
-    if (match) {
-      return Number(match[1])
-    }
+  for (const node of Array.from(panel.querySelectorAll('*'))) {
+    const year = matchYearText(node.textContent || '')
+    if (year) return year
   }
   return 0
 }
@@ -92,7 +125,7 @@ function findYearNavigationControl(panel: Element, currentYear: number, targetYe
   if (buttons.length === 0) return null
 
   const yearNode = Array.from(panel.querySelectorAll('*')).find((node) =>
-    /^\d{4}年$/.test(normalizeFieldText(node.textContent || '')),
+    Boolean(matchYearText(node.textContent || '')),
   )
   if (!yearNode) {
     return targetYear < currentYear ? buttons[0] : buttons[buttons.length - 1]
@@ -134,15 +167,18 @@ async function movePickerToYear(panel: Element, targetYear: number): Promise<boo
   return false
 }
 
-export async function clickPanelCell(panel: Element, text: string): Promise<boolean> {
-  const normalizedTarget = normalizeFieldText(text)
+/** 点击文本完全匹配的面板单元格；接受多个候选写法（8月/08月、8/08） */
+export async function clickPanelCell(panel: Element, ...texts: string[]): Promise<boolean> {
+  const targets = texts.map((text) => normalizeFieldText(text)).filter(Boolean)
+  if (targets.length === 0) return false
+
   const candidates = Array.from(panel.querySelectorAll('button,[role="button"],td,li,div,span')).filter(
     (node) => {
       if (!isVisible(node)) return false
       if (node.getAttribute?.('aria-disabled') === 'true') return false
       const className = String((node as HTMLElement).className || '')
       if (/disabled/i.test(className)) return false
-      return normalizeFieldText(node.textContent || '') === normalizedTarget
+      return targets.includes(normalizeFieldText(node.textContent || ''))
     },
   )
 
@@ -157,6 +193,19 @@ export async function clickPanelCell(panel: Element, text: string): Promise<bool
   clickLikeUser(target)
   await sleep(80)
   return true
+}
+
+/** 读回控件展示值：input.value 为空时回退读外层容器的日期文本（自研组件常渲染在兄弟节点） */
+export function readDisplayedDateValue(el: HTMLInputElement): string {
+  const own = String(el?.value ?? '').trim()
+  if (own) return own
+
+  const wrapper = el?.closest?.(
+    '[class*="picker"],[class*="Picker"],[class*="dropdown"],[class*="Dropdown"],[class*="calendar"],[class*="Calendar"]',
+  )
+  const text = String((wrapper as HTMLElement | null)?.textContent || '')
+  const match = text.match(/\d{4}\s*[-/.年]\s*\d{1,2}(?:\s*[-/.月]\s*\d{1,2}\s*日?)?/)
+  return match ? normalizeDateValue(match[0]) : ''
 }
 
 export async function fillReadonlyDateRuntime(
@@ -181,15 +230,18 @@ export async function fillReadonlyDateRuntime(
 
   log('直接写入失败', '尝试打开日期面板')
 
-  const trigger = el.closest?.('.mtd-input-affix-wrapper') || el
-  clickLikeUser(trigger)
-  await sleep(120)
+  // 逐个尝试触发器：输入框本体 → 输入框父容器（图标常在父级）。面板已出现即停，避免二次点击把面板点收起
+  const trigger = el.closest?.(
+    '.mtd-input-affix-wrapper, [class*="input-group"], [class*="InputGroup"], [class*="input-wrapper"], [class*="InputWrapper"]',
+  )
+  const clickCandidates = [trigger, el.parentElement, el].filter(Boolean) as Element[]
+  let panel: Element | null = null
 
-  let panel = findVisibleDatePanel(el)
-  if (!panel) {
-    clickLikeUser(el)
-    await sleep(120)
+  for (const candidate of clickCandidates) {
+    clickLikeUser(candidate)
+    await sleep(150)
     panel = findVisibleDatePanel(el)
+    if (panel) break
   }
 
   if (!panel) {
@@ -211,29 +263,31 @@ export async function fillReadonlyDateRuntime(
     return false
   }
 
+  const month = Number(parsed.month)
   panel = findVisibleDatePanel(el) || panel
-  const monthLabel = `${Number(parsed.month)}月`
-  if (!(await clickPanelCell(panel, monthLabel))) {
-    log('月份点击失败', monthLabel)
+  if (!(await clickPanelCell(panel, `${month}月`, `${String(month).padStart(2, '0')}月`))) {
+    log('月份点击失败', `${month}月`)
     return false
   }
 
-  log('月份点击成功', monthLabel)
+  log('月份点击成功', `${month}月`)
   await sleep(120)
 
   if (parsed.day) {
+    const day = Number(parsed.day)
     panel = findVisibleDatePanel(el) || panel
-    const dayOk = await clickPanelCell(panel, String(Number(parsed.day)))
+    const dayOk = await clickPanelCell(panel, String(day), String(day).padStart(2, '0'))
     if (!dayOk) {
-      log('日期点击失败', String(Number(parsed.day)))
+      log('日期点击失败', String(day))
       return false
     }
-    log('日期点击成功', String(Number(parsed.day)))
+    log('日期点击成功', String(day))
     await sleep(120)
   }
 
-  const matched = matchesWrittenValue(runtime, el.value, desired)
-  log(matched ? '最终校验成功' : '最终校验失败', `当前值=${el.value || '(empty)'}`)
+  const displayed = readDisplayedDateValue(el)
+  const matched = matchesWrittenValue(runtime, displayed, desired)
+  log(matched ? '最终校验成功' : '最终校验失败', `当前值=${displayed || '(empty)'}`)
   return matched
 }
 

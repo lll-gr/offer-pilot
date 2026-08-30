@@ -5,7 +5,7 @@
  */
 
 /** content script 版本：content 侧行为变更时 bump，旧脚本 ping 会被判为过期 */
-export const CONTENT_SCRIPT_VERSION = '2026-08-29-offer-pilot-v4'
+export const CONTENT_SCRIPT_VERSION = '2026-08-30-offer-pilot-v5'
 
 /** 字段映射缓存的 storage key（popup 清理按钮与 content 读写共用） */
 export const MAPPING_CACHE_KEY = 'fieldMappingCacheV3'
@@ -58,7 +58,27 @@ export type TabMessage =
   | { action: 'ping' }
   | { action: 'getStatus' }
   | { action: 'cancelFill' }
-export type TabMessageResponse = PingResponse | GetStatusResponse | StartFillResponse | { success: boolean; canceled: boolean }
+  | { action: 'collectFilledFields' }
+export type TabMessageResponse = PingResponse | GetStatusResponse | StartFillResponse | CollectFilledFieldsResponse | { success: boolean; canceled: boolean }
+
+/** 页面回填简历：content 侧收集的已填字段快照单元（值原样取自页面，AI 不产出值） */
+export interface FilledFieldSnapshot {
+  fieldId: string
+  kind: string
+  label: string
+  placeholder: string
+  context: string
+  sectionLabel: string
+  nearbyLabels: string[]
+  options: string[]
+  value: string
+}
+
+export interface CollectFilledFieldsResponse {
+  success: boolean
+  fields: FilledFieldSnapshot[]
+  message?: string
+}
 
 // 通知事件契约见 ./events.ts（FillEvent 单一真源）
 

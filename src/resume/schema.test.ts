@@ -85,6 +85,17 @@ describe('resume schema', () => {
     expect(getValueByPath(profile, 'jobPreferences.employmentType')).toBe('实习')
   })
 
+  it('drops removed legacy skill keys on normalize', () => {
+    const profile = normalizeResumeProfile({
+      skills: { programmingLanguages: 'JavaScript', softSkills: '沟通', interests: '羽毛球' },
+    })
+
+    const skills = getValueByPath(profile, 'skills') as Record<string, string>
+    expect(skills.professionalSkills).toBe('')
+    expect(skills.softSkills).toBe('沟通')
+    expect(skills.interests).toBe('羽毛球')
+  })
+
   it('setValueByPath creates intermediate containers', () => {
     const target: Record<string, unknown> = {}
 

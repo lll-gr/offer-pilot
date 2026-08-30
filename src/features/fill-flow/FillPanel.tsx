@@ -9,10 +9,12 @@ interface FillPanelProps {
   isFilling: boolean
   runningAction: FillActionKey | null
   fillTip: string | null
+  isBackfilling: boolean
   onRun: (actionKey: FillActionKey) => void
   onCancel: () => void
   onClearCache: () => void
   onRequireResume: () => void
+  onBackfill: () => void
 }
 
 const ACTION_BUTTONS: Array<{ key: FillActionKey; className: string }> = [
@@ -28,10 +30,12 @@ export function FillPanel({
   isFilling,
   runningAction,
   fillTip,
+  isBackfilling,
   onRun,
   onCancel,
   onClearCache,
   onRequireResume,
+  onBackfill,
 }: FillPanelProps) {
   return (
     <section className="op-panel active">
@@ -74,7 +78,7 @@ export function FillPanel({
             </button>
           )
         })}
-        {isFilling ? (
+        {isFilling || isBackfilling ? (
           <button className="op-btn op-btn-ghost op-btn-lg op-btn-stop" onClick={onCancel}>
             停止填充
           </button>
@@ -83,6 +87,14 @@ export function FillPanel({
             清理映射缓存
           </button>
         )}
+        <button
+          className="op-btn op-btn-ghost op-btn-lg"
+          disabled={isFilling || isBackfilling}
+          onClick={onBackfill}
+          title="扫描当前页面已填的内容，补充到标准简历的空缺字段（不覆盖已有内容）"
+        >
+          {isBackfilling ? '回填中...' : '回填简历'}
+        </button>
         {fillTip ? <div className="op-hint">{fillTip}</div> : null}
       </div>
     </section>

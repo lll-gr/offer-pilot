@@ -64,6 +64,14 @@ export function normalizeValueForRuntime(runtime: DateLikeRuntime | null | undef
   return text
 }
 
+/** 日期文本 → 补零数字串（2024年6月15日/2024.06.15 → 20240615），分隔符与补零差异归一 */
+function canonicalDateDigits(text: string): string {
+  const match = text.match(/(\d{4})\D+(\d{1,2})(?:\D+(\d{1,2}))?/)
+  if (!match) return ''
+  const month = match[2].padStart(2, '0')
+  return match[3] ? `${match[1]}${month}${match[3].padStart(2, '0')}` : `${match[1]}${month}`
+}
+
 export function matchesWrittenValue(
   runtime: DateLikeRuntime | null | undefined,
   actualValue: string,
@@ -76,6 +84,11 @@ export function matchesWrittenValue(
   if (isReadonlyDateLikeRuntime(runtime)) {
     if (actual === desired) return true
     if (/^\d{4}-\d{2}$/.test(desired) && actual.startsWith(desired)) return true
+    // 分隔符与补零差异（2024.6.15 / 2024年6月15日 vs 2024-06-15）：按补零数字串比对
+    if (/^\d{4}-\d{2}(-\d{2})?$/.test(desired)) {
+      const actualDigits = canonicalDateDigits(actual)
+      if (actualDigits && actualDigits === canonicalDateDigits(desired)) return true
+    }
   }
 
   return actual === desired

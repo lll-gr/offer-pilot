@@ -72,6 +72,7 @@ function fakeDom(setup: FakeDomSetup) {
     typeText(_el, text) {
       typed.push(text)
     },
+    clickOutside: vi.fn(),
     sleep: async () => {},
   }
   return { dom, typed }
@@ -124,6 +125,20 @@ describe('fillCustomSelect', () => {
 
     const result = await fillCustomSelect(runtime(el), '本科', undefined, dom)
     expect(result.filled).toBe(true)
+  })
+
+  it('collapses leftover dropdown via escape then outside click after fill', async () => {
+    // 模拟填后浮层不自动关闭的自研组件：选项始终可见
+    const el = inputCombobox('请选择')
+    const { dom } = fakeDom({
+      options: options(['大专', '本科']),
+      displayAfterClick: '本科',
+    })
+
+    await fillCustomSelect(runtime(el), '本科', undefined, dom)
+
+    expect(dom.pressEscape).toHaveBeenCalled()
+    expect(dom.clickOutside).toHaveBeenCalled()
   })
 
   it('tier 2: falls back to type-and-enter when option click does not land', async () => {

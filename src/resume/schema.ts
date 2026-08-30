@@ -60,7 +60,7 @@ export interface SectionStats {
   filledItems: number
 }
 
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 const SELECT_ALIAS_GROUPS: Array<{ values: string[] }> = [
   { values: ['男', 'male', 'man', 'm'] },
@@ -284,16 +284,13 @@ export const SECTION_DEFINITIONS: ResumeSectionDef[] = [
     label: '技能与亮点',
     type: 'group',
     fields: [
-      { key: 'primarySkills', label: '核心技能', input: 'textarea', placeholder: '分布式系统、系统设计、工程架构...' },
-      { key: 'programmingLanguages', label: '编程语言', input: 'textarea', placeholder: 'JavaScript、TypeScript、Python' },
-      { key: 'frameworks', label: '框架', input: 'textarea', placeholder: 'React、Node.js、FastAPI' },
-      { key: 'aiTools', label: 'AI / 大模型工具', input: 'textarea', placeholder: 'OpenAI API、LangChain、RAG' },
-      { key: 'cloudPlatforms', label: '云平台', input: 'textarea', placeholder: 'AWS、阿里云、腾讯云、Azure' },
-      { key: 'databases', label: '数据库', input: 'textarea', placeholder: 'PostgreSQL、Redis、Elasticsearch' },
-      { key: 'tooling', label: '工程工具', input: 'textarea', placeholder: 'Docker、Kubernetes、GitHub Actions' },
-      { key: 'domainKnowledge', label: '行业经验', input: 'textarea', placeholder: '金融、电商、教育、增长、AI...' },
-      { key: 'managementExperience', label: '管理经验', input: 'textarea', placeholder: '团队规模、招聘、带教、跨团队协作' },
-      { key: 'softSkills', label: '软技能', input: 'textarea', placeholder: '沟通、推动、协作、领导力' },
+      {
+        key: 'professionalSkills',
+        label: '专业技能',
+        input: 'textarea',
+        placeholder: '核心技能、工具、软件，可分行罗列（如：Python（精通）、SPSS（熟练）、Photoshop（熟练））',
+      },
+      { key: 'softSkills', label: '软技能', input: 'textarea', placeholder: '沟通、协作、推动、领导力、学习能力等' },
       { key: 'notableAchievements', label: '代表性成绩', input: 'textarea', placeholder: '最能体现能力和结果的数据化成绩' },
       { key: 'interests', label: '兴趣爱好', input: 'textarea', placeholder: '可选' },
     ],

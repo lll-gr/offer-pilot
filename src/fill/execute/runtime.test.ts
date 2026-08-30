@@ -33,4 +33,13 @@ describe('fill runtime', () => {
     expect(matchesWrittenValue(runtime, '', '2024-06')).toBe(false)
     expect(matchesWrittenValue({ label: '姓名' }, '张三', '张三')).toBe(true)
   })
+
+  it('treats separator differences in date-like fields as equivalent', () => {
+    const runtime = { readOnly: true, label: '毕业时间' }
+
+    expect(matchesWrittenValue(runtime, '2024.06.15', '2024-06-15')).toBe(true)
+    expect(matchesWrittenValue(runtime, '2024年6月15日', '2024-06-15')).toBe(true)
+    expect(matchesWrittenValue(runtime, '2024/06', '2024-06')).toBe(true)
+    expect(matchesWrittenValue(runtime, '2024.07.15', '2024-06-15')).toBe(false)
+  })
 })
